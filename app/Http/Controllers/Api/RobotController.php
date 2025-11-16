@@ -10,6 +10,7 @@ use App\Services\FirebaseSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Auth;
 
 class RobotController extends Controller
 {
@@ -119,7 +120,14 @@ class RobotController extends Controller
     public function createSchedule(Request $request): JsonResponse
     {
         try {
-            $user = $request->user;
+            $user = Auth::user() ?? $request->user;
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
+            }
 
             $validator = Validator::make($request->all(), [
                 'blok_id' => 'required|exists:bloks,id',
@@ -152,14 +160,39 @@ class RobotController extends Controller
                 'status' => 'pending',
             ]);
 
-            // Push to Firebase for robot to read
-            $pushed = $this->firebaseSync->pushRobotScheduleToFirebase($schedule);
+            // Load relationship for Firebase push
+            $schedule->load('blok.kebun');
 
-            if (!$pushed) {
+            // Push to Firebase for robot to read
+            $firebaseError = null;
+            try {
+                $pushed = $this->firebaseSync->pushRobotScheduleToFirebase($schedule);
+
+                if (!$pushed) {
+                    $firebaseError = 'Failed to push to Firebase (check server logs)';
+                    \Log::error("Failed to push schedule to Firebase", [
+                        'schedule_id' => $schedule->id,
+                        'blok_id' => $schedule->blok_id,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                $firebaseError = $e->getMessage();
+                \Log::error("Exception while pushing schedule to Firebase", [
+                    'schedule_id' => $schedule->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            }
+            
+            // Even if Firebase push fails, schedule is still created in database
+            // Return success with warning if Firebase failed
+            if ($firebaseError) {
                 return response()->json([
-                    'success' => false,
-                    'message' => 'Schedule created but failed to push to Firebase'
-                ], 500);
+                    'success' => true,
+                    'message' => 'Schedule created successfully, but failed to sync to Firebase. Schedule is saved in database.',
+                    'warning' => $firebaseError,
+                    'data' => $schedule->load(['blok', 'creator'])
+                ], 201);
             }
 
             // Log activity
@@ -191,7 +224,14 @@ class RobotController extends Controller
     public function updateSchedule(Request $request, $id): JsonResponse
     {
         try {
-            $user = $request->user;
+            $user = Auth::user() ?? $request->user;
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
+            }
             $schedule = RobotSchedule::findOrFail($id);
 
             // Can't update if already in progress or completed
@@ -255,7 +295,14 @@ class RobotController extends Controller
     public function cancelSchedule(Request $request, $id): JsonResponse
     {
         try {
-            $user = $request->user;
+            $user = Auth::user() ?? $request->user;
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
+            }
             $schedule = RobotSchedule::findOrFail($id);
 
             if ($schedule->status === 'completed') {
@@ -268,8 +315,7 @@ class RobotController extends Controller
             $schedule->update(['status' => 'cancelled']);
 
             // Remove from Firebase
-            $scheduleKey = 'schedule_' . $schedule->id;
-            $this->firebaseSync->firebase->deleteDatabaseData("robot/schedules/{$scheduleKey}");
+            $this->firebaseSync->deleteRobotScheduleFromFirebase($schedule->id);
 
             // Log activity
             ActivityLog::logActivity(
@@ -290,6 +336,51 @@ class RobotController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to cancel schedule: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete robot schedule (K-Petani only) - Soft delete for history
+     */
+    public function deleteSchedule(Request $request, $id): JsonResponse
+    {
+        try {
+            $user = Auth::user() ?? $request->user;
+            
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized'
+                ], 401);
+            }
+            
+            $schedule = RobotSchedule::findOrFail($id);
+            
+            // Perform soft delete
+            $schedule->delete();
+            
+            // Remove from Firebase
+            $this->firebaseSync->deleteRobotScheduleFromFirebase($schedule->id);
+            
+            // Log activity
+            ActivityLog::logActivity(
+                $user->id,
+                'delete',
+                'RobotSchedule',
+                $schedule->id,
+                "K-Petani {$user->name} deleted robot schedule #{$schedule->id} from history"
+            );
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Schedule deleted successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete schedule: ' . $e->getMessage()
             ], 500);
         }
     }

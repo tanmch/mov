@@ -134,7 +134,18 @@ class FirebaseService
      */
     public function setDatabaseData(string $path, $data)
     {
-        return $this->database->getReference($path)->set($data);
+        try {
+            $reference = $this->database->getReference($path);
+            $reference->set($data);
+            return true;
+        } catch (\Exception $e) {
+            \Log::error("Firebase setDatabaseData failed", [
+                'path' => $path,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
     }
 
     /**
