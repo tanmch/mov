@@ -28,9 +28,10 @@ Route::middleware('auth')->group(function () {
     // Read-only routes (all authenticated users can view)
     Route::get('/sensor', [\App\Http\Controllers\SensorController::class, 'index'])->name('sensor');
     
-    Route::get('/robot', function () {
-        return Inertia::render('RobotControl');
-    })->name('robot');
+    // Sensor Thresholds - Get (all users can view)
+    Route::get('/sensor-thresholds', [\App\Http\Controllers\SensorThresholdController::class, 'getThresholds'])->name('sensor-thresholds.get');
+    
+    Route::get('/robot', [\App\Http\Controllers\RobotControlController::class, 'index'])->name('robot');
     
     Route::get('/prediksi', function () {
         return Inertia::render('PrediksiPanen');
@@ -56,6 +57,13 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('ArtikelEdukasi');
     })->name('artikel');
     
+    // Robot routes (all authenticated users can view)
+    Route::prefix('api/robot')->group(function () {
+        Route::get('/schedules', [\App\Http\Controllers\Api\RobotController::class, 'schedules'])->name('robot.schedules');
+        Route::get('/schedules/upcoming', [\App\Http\Controllers\Api\RobotController::class, 'upcomingSchedules'])->name('robot.schedules.upcoming');
+        Route::get('/schedules/{id}', [\App\Http\Controllers\Api\RobotController::class, 'showSchedule'])->name('robot.schedules.show');
+    });
+    
     // K-Petani only routes (CRUD operations)
     Route::middleware('role:k-petani')->group(function () {
         // Kebun Management (CRUD)
@@ -76,6 +84,17 @@ Route::middleware('auth')->group(function () {
         Route::put('/users/{id}', [\App\Http\Controllers\UserController::class, 'update'])->name('users.update');
         Route::delete('/users/{id}', [\App\Http\Controllers\UserController::class, 'destroy'])->name('users.destroy');
         Route::post('/users/{id}/toggle-active', [\App\Http\Controllers\UserController::class, 'toggleActive'])->name('users.toggle-active');
+        
+        // Sensor Thresholds - Update (K-Petani only)
+        Route::put('/sensor-thresholds/{sensorType}', [\App\Http\Controllers\SensorThresholdController::class, 'update'])->name('sensor-thresholds.update');
+        
+        // Robot schedules - Create, Update, Cancel, Delete (K-Petani only)
+        Route::prefix('api/robot')->group(function () {
+            Route::post('/schedules', [\App\Http\Controllers\Api\RobotController::class, 'createSchedule'])->name('robot.schedules.create');
+            Route::put('/schedules/{id}', [\App\Http\Controllers\Api\RobotController::class, 'updateSchedule'])->name('robot.schedules.update');
+            Route::put('/schedules/{id}/cancel', [\App\Http\Controllers\Api\RobotController::class, 'cancelSchedule'])->name('robot.schedules.cancel');
+            Route::delete('/schedules/{id}', [\App\Http\Controllers\Api\RobotController::class, 'deleteSchedule'])->name('robot.schedules.delete');
+        });
     });
 });
 

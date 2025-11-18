@@ -24,19 +24,38 @@ class FirebaseSyncService
     public function pushRobotScheduleToFirebase(RobotSchedule $schedule): bool
     {
         try {
+            // Ensure blok relationship is loaded
+            if (!$schedule->relationLoaded('blok')) {
+                $schedule->load('blok');
+            }
+            
             $blok = $schedule->blok;
+            
+            if (!$blok) {
+                throw new \Exception("Blok not found for schedule #{$schedule->id}");
+            }
+            
             $scheduleKey = 'schedule_' . $schedule->id;
 
+            // Prepare Firebase data
             $firebaseData = [
                 'schedule_id' => $schedule->id,
                 'blok_id' => $blok->code ?? "blok_{$blok->id}",
                 'mission_type' => $schedule->mission_type,
-                'priority' => $schedule->priority,
-                'scheduled_at' => $schedule->scheduled_at->toIso8601String(),
-                'status' => $schedule->status,
+                'priority' => $schedule->priority ?? 'medium',
+                'status' => $schedule->status ?? 'pending',
                 'mission_details' => $schedule->mission_details ?? [],
-                'created_at' => $schedule->created_at->timestamp * 1000, // milliseconds
             ];
+            
+            // Add scheduled_at if exists
+            if ($schedule->scheduled_at) {
+                $firebaseData['scheduled_at'] = $schedule->scheduled_at->toIso8601String();
+            }
+            
+            // Add created_at if exists
+            if ($schedule->created_at) {
+                $firebaseData['created_at'] = $schedule->created_at->timestamp * 1000; // milliseconds
+            }
 
             // Write to Firebase
             $this->firebase->setDatabaseData(
@@ -51,7 +70,8 @@ class FirebaseSyncService
 
             Log::info("Robot schedule pushed to Firebase", [
                 'schedule_id' => $schedule->id,
-                'path' => "robot/schedules/{$scheduleKey}"
+                'path' => "robot/schedules/{$scheduleKey}",
+                'blok_code' => $blok->code,
             ]);
 
             return true;
@@ -59,7 +79,8 @@ class FirebaseSyncService
         } catch (\Exception $e) {
             Log::error("Failed to push schedule to Firebase", [
                 'schedule_id' => $schedule->id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             return false;
         }
@@ -237,6 +258,33 @@ class FirebaseSyncService
                 'error' => $e->getMessage()
             ]);
             return ['synced' => 0, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Delete robot schedule from Firebase
+     */
+    public function deleteRobotScheduleFromFirebase(int $scheduleId): bool
+    {
+        try {
+            $scheduleKey = 'schedule_' . $scheduleId;
+            
+            // Delete from Firebase
+            $this->firebase->deleteDatabaseData("robot/schedules/{$scheduleKey}");
+            
+            Log::info("Robot schedule deleted from Firebase", [
+                'schedule_id' => $scheduleId,
+                'path' => "robot/schedules/{$scheduleKey}"
+            ]);
+            
+            return true;
+            
+        } catch (\Exception $e) {
+            Log::error("Failed to delete schedule from Firebase", [
+                'schedule_id' => $scheduleId,
+                'error' => $e->getMessage()
+            ]);
+            return false;
         }
     }
 

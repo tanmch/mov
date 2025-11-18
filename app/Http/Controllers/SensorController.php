@@ -26,15 +26,23 @@ class SensorController extends Controller
             $period = $request->get('period', '24h'); // 24h, 7d, 30d
 
             // Get all bloks user can access
-            $bloksQuery = Blok::with(['kebun']);
-            
-            if ($user->role === 'petani') {
-                $bloksQuery->whereHas('kebun', function ($q) use ($user) {
+            // K-Petani and Petani see the same kebuns (owned by K-Petani)
+            if ($user->role === 'k-petani') {
+                $bloks = Blok::whereHas('kebun', function ($q) use ($user) {
                     $q->where('owner_id', $user->id);
-                });
+                })
+                ->with(['kebun'])
+                ->orderBy('code', 'asc')
+                ->get();
+            } else {
+                // Petani sees kebuns owned by K-Petani users
+                $bloks = Blok::whereHas('kebun.owner', function ($q) {
+                    $q->where('role', 'k-petani');
+                })
+                ->with(['kebun'])
+                ->orderBy('code', 'asc')
+                ->get();
             }
-            
-            $bloks = $bloksQuery->orderBy('code', 'asc')->get();
         
         // Get blok options for filter
         $blokOptions = [['value' => 'all', 'label' => 'Semua Blok']];
@@ -117,6 +125,7 @@ class SensorController extends Controller
             // Group by time interval first
             $timeGrouped = $allReadings->groupBy(function ($reading) use ($period) {
                 if ($period === '24h') {
+                    // Group by hour (format: HH:00)
                     return $reading->reading_time->format('H:00');
                 } elseif ($period === '7d') {
                     return $reading->reading_time->format('Y-m-d');
@@ -135,8 +144,9 @@ class SensorController extends Controller
                 }
                 
                 $firstReading = $readings->first();
+                // Use consistent time format: HH:00 for 24h, d M for 7d/30d
                 $timeFormat = $period === '24h' 
-                    ? $firstReading->reading_time->format('H:i')
+                    ? $firstReading->reading_time->format('H:00') // Use HH:00 format (padded hour)
                     : ($period === '7d' 
                         ? $firstReading->reading_time->format('d M')
                         : $firstReading->reading_time->format('d M'));
@@ -173,7 +183,35 @@ class SensorController extends Controller
                 return $dataPoint;
             })
             ->filter() // Remove null values
-            ->values();
+            ->values()
+            ->sortBy(function ($item) use ($period) {
+                // Sort by time key for proper ordering
+                if ($period === '24h') {
+                    // Extract hour from time string (format: "HH:00")
+                    $hour = (int) explode(':', $item['time'])[0];
+                    return $hour;
+                } else {
+                    // For 7d and 30d, sort by date
+                    try {
+                        // Parse date string (format: "d M" like "15 Nov")
+                        $dateParts = explode(' ', $item['time']);
+                        $day = (int) $dateParts[0];
+                        $month = $dateParts[1] ?? '';
+                        // Create a sortable date string
+                        $monthMap = [
+                            'Jan' => '01', 'Feb' => '02', 'Mar' => '03', 'Apr' => '04',
+                            'Mei' => '05', 'May' => '05', 'Jun' => '06', 'Jul' => '07',
+                            'Agu' => '08', 'Aug' => '08', 'Sep' => '09', 'Okt' => '10',
+                            'Oct' => '10', 'Nov' => '11', 'Des' => '12', 'Dec' => '12'
+                        ];
+                        $monthNum = $monthMap[$month] ?? '01';
+                        return date('Y') . $monthNum . str_pad($day, 2, '0', STR_PAD_LEFT);
+                    } catch (\Exception $e) {
+                        return $item['time'];
+                    }
+                }
+            })
+            ->values(); // Re-index after sorting
             
             // Also pass blok codes for frontend
             $blokCodesArray = $blokCodes->toArray();
@@ -223,6 +261,27 @@ class SensorController extends Controller
             \Log::error('Error getting alerts: ' . $e->getMessage());
         }
 
+            // Get sensor thresholds
+            $thresholds = \App\Models\SensorThreshold::orderBy('sensor_type')->get();
+            $defaults = \App\Models\SensorThreshold::getDefaults();
+            
+            $thresholdsData = [];
+            foreach (['suhu_udara', 'kelembapan_udara', 'kelembapan_tanah'] as $sensorType) {
+                $threshold = $thresholds->where('sensor_type', $sensorType)->first();
+                if ($threshold) {
+                    $thresholdsData[$sensorType] = [
+                        'warning_min' => $threshold->warning_min,
+                        'warning_max' => $threshold->warning_max,
+                        'critical_min' => $threshold->critical_min,
+                        'critical_max' => $threshold->critical_max,
+                        'normal_min' => $threshold->normal_min,
+                        'normal_max' => $threshold->normal_max,
+                    ];
+                } else {
+                    $thresholdsData[$sensorType] = $defaults[$sensorType];
+                }
+            }
+
             return Inertia::render('MonitoringSensor', [
                 'bloks' => $bloks->map(function ($blok) {
                     return [
@@ -244,6 +303,7 @@ class SensorController extends Controller
                 'chartBlokCodes' => $blokCodesArray ?? [], // Pass blok codes for chart
                 'alerts' => $alerts,
                 'lastUpdate' => $latestReadings->max('reading_time')?->diffForHumans() ?? 'Tidak ada data',
+                'thresholds' => $thresholdsData, // Pass thresholds to frontend
             ]);
         } catch (\Exception $e) {
             \Log::error('SensorController@index error: ' . $e->getMessage(), [

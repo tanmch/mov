@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,13 +10,13 @@ import {
     Bot, Thermometer, Droplets, Sprout, TrendingUp, AlertCircle, 
     Battery, MapPin, Calendar, PieChart as PieChartIcon, 
     Zap, Activity, Clock, CheckCircle2, XCircle, RefreshCw, User, Shield,
-    Wifi, WifiOff, AlertTriangle, Filter, ChevronDown, BarChart3
+    Wifi, WifiOff, AlertTriangle, Filter, ChevronDown, BarChart3, Bell, X
 } from 'lucide-react';
 import { LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { database } from '@/config/firebase';
 import { ref, onValue, off } from 'firebase/database';
 
-export default function Dashboard({ robotStatus, maturityData, sensorData, trendData, notifications, upcomingSchedules, bloks = [], blokOptions = [], selectedTimeRange: initialTimeRange = '24h', selectedBlokId: initialBlokId = 'average' }) {
+export default function Dashboard({ robotStatus, maturityData, sensorData, trendData, notifications, upcomingSchedules, bloks = [], blokOptions = [], selectedTimeRange: initialTimeRange = '24h', selectedBlokId: initialBlokId = 'average', thresholds = {} }) {
     const { auth } = usePage().props;
     const { isKPetani, canEdit, userRole } = useRole();
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -26,6 +26,53 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
     const [selectedBlokId, setSelectedBlokId] = useState(initialBlokId);
     const [selectedTimeRange, setSelectedTimeRange] = useState(initialTimeRange || '24h');
     const [realtimeSensorData, setRealtimeSensorData] = useState({});
+    
+    // Real-time robot status from Firebase
+    const [realtimeRobotStatus, setRealtimeRobotStatus] = useState(robotStatus);
+    
+    // Real-time schedules from Firebase
+    const [schedules, setSchedules] = useState(upcomingSchedules || []);
+    const [firebaseSchedules, setFirebaseSchedules] = useState({});
+    
+    // Flying leaves animation data (same as login page) - 12 leaves
+    const flyingLeaves = useMemo(() => {
+        return [
+            { id: 1, startX: -10, endX: 110, startY: 5, duration: 15, delay: 0, size: 'w-4 h-4', rotation: 45 },
+            { id: 2, startX: -10, endX: 110, startY: 15, duration: 18, delay: 3, size: 'w-5 h-5', rotation: -30 },
+            { id: 3, startX: -10, endX: 110, startY: 25, duration: 20, delay: 6, size: 'w-4 h-4', rotation: 60 },
+            { id: 4, startX: -10, endX: 110, startY: 35, duration: 16, delay: 2, size: 'w-3 h-3', rotation: -45 },
+            { id: 5, startX: -10, endX: 110, startY: 45, duration: 22, delay: 4, size: 'w-5 h-5', rotation: 30 },
+            { id: 6, startX: -10, endX: 110, startY: 55, duration: 19, delay: 1, size: 'w-4 h-4', rotation: -60 },
+            { id: 7, startX: -10, endX: 110, startY: 65, duration: 17, delay: 5, size: 'w-3 h-3', rotation: 50 },
+            { id: 8, startX: -10, endX: 110, startY: 75, duration: 21, delay: 2.5, size: 'w-5 h-5', rotation: -40 },
+            { id: 9, startX: -10, endX: 110, startY: 85, duration: 14, delay: 7, size: 'w-4 h-4', rotation: 35 },
+            { id: 10, startX: -10, endX: 110, startY: 20, duration: 23, delay: 1.5, size: 'w-3 h-3', rotation: -55 },
+            { id: 11, startX: -10, endX: 110, startY: 50, duration: 16, delay: 4.5, size: 'w-5 h-5', rotation: 40 },
+            { id: 12, startX: -10, endX: 110, startY: 80, duration: 18, delay: 3.5, size: 'w-4 h-4', rotation: -25 },
+        ];
+    }, []);
+    
+    // Generate particle data once (memoized) - Larger, pastel colors, abstract movement
+    const particles = useMemo(() => {
+        return [...Array(20)].map((_, i) => ({
+            id: i,
+            size: Math.random() * 12 + 8,
+            left: Math.random() * 100,
+            top: Math.random() * 100,
+            // Pastel colors with lower saturation
+            baseColor: i % 3 === 0 
+                ? { r: 167, g: 243, b: 208 } // Pastel emerald
+                : i % 3 === 1 
+                ? { r: 191, g: 219, b: 254 } // Pastel blue
+                : { r: 221, g: 214, b: 254 }, // Pastel purple
+            duration: Math.random() * 10 + 10,
+            delay: Math.random() * 5,
+            // Abstract movement patterns
+            movementType: i % 4, // 0: circular, 1: figure-8, 2: zigzag, 3: wave
+            radius: Math.random() * 30 + 20, // For circular movement
+            speed: Math.random() * 0.5 + 0.3, // Movement speed multiplier
+        }));
+    }, []);
     
     // Historical trend data from Firebase (24 hours) - with localStorage persistence
     const [realtimeTrendData, setRealtimeTrendData] = useState(() => {
@@ -50,6 +97,27 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
     const [isDropdownOpenTren, setIsDropdownOpenTren] = useState(false);
     const firebaseListenersRef = useRef([]);
     const selectedBlokIdRef = useRef(selectedBlokId); // Ref to track current selected blok
+    
+    // Real-time notifications state - with localStorage persistence
+    const [realtimeNotifications, setRealtimeNotifications] = useState(() => {
+        // Load from localStorage on mount
+        try {
+            const saved = localStorage.getItem('dashboardNotifications');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                // Filter out old notifications (older than 7 days)
+                const now = Date.now();
+                const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+                return parsed.filter(notif => notif.timestamp >= sevenDaysAgo);
+            }
+        } catch (e) {
+            console.error('Error loading notifications from localStorage:', e);
+        }
+        return [];
+    });
+    const [toastNotification, setToastNotification] = useState(null); // Only show latest toast
+    const previousSensorStatusRef = useRef({}); // Track previous sensor status to detect changes
+    const notificationCooldownRef = useRef({}); // Track notification cooldown to prevent spam
     
     // Update ref when selectedBlokId changes
     useEffect(() => {
@@ -91,6 +159,34 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    // Get sensor status helper - synchronized with Monitoring Sensor IoT
+    // This function uses the same logic as MonitoringSensor.jsx
+    // Must be defined before Firebase listener to be accessible in callback
+    const calculateStatus = (sensorType, value) => {
+        if (!value || value === 0) return 'normal';
+        
+        const threshold = thresholds[sensorType] || {};
+        
+        if (sensorType === 'suhu_udara') {
+            // For temperature: higher is worse
+            const criticalMax = threshold.critical_max ?? 40;
+            const warningMax = threshold.warning_max ?? 35;
+            
+            if (value >= criticalMax) return 'critical';
+            if (value >= warningMax) return 'warning';
+            return 'normal';
+        } else if (sensorType === 'kelembapan_udara' || sensorType === 'kelembapan_tanah') {
+            // For humidity: lower is worse
+            const criticalMin = threshold.critical_min ?? 20;
+            const warningMin = threshold.warning_min ?? 30;
+            
+            if (value <= criticalMin) return 'critical';
+            if (value <= warningMin) return 'warning';
+            return 'normal';
+        }
+        return 'normal';
+    };
 
     // Firebase Real-time Listener for selected blok or average
     useEffect(() => {
@@ -143,12 +239,132 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                     Object.keys(data).forEach(sensorType => {
                         const sensorData = data[sensorType];
                         if (sensorData && sensorData.value !== undefined) {
+                            const value = sensorData.value;
+                            
+                            // Calculate status based on thresholds
+                            const status = calculateStatus(sensorType, value);
+                            
                             allSensorData[blokCode][sensorType] = {
-                                value: sensorData.value,
+                                value: value,
                                 unit: sensorData.unit || (sensorType === 'suhu_udara' ? '°C' : '%'),
-                                status: sensorData.status || 'normal',
+                                status: status,
                                 timestamp: sensorData.timestamp || Date.now(),
                             };
+                            
+                            // Generate notification directly from Firebase data (not from UI changes)
+                            // Create unique key for this sensor+blok combination
+                            const sensorKey = `${blokCode}_${sensorType}`;
+                            const previousStatus = previousSensorStatusRef.current[sensorKey];
+                            
+                            // Only generate notification if:
+                            // 1. Status changed (not initial load)
+                            // 2. Status is warning or critical
+                            // 3. Previous status was not undefined (to avoid triggering on initial load or UI changes)
+                            // 4. Previous status was normal (to avoid duplicate notifications when status changes from warning to critical)
+                            if (previousStatus !== undefined && 
+                                previousStatus !== status && 
+                                (status === 'warning' || status === 'critical') &&
+                                (previousStatus === 'normal' || (previousStatus === 'warning' && status === 'critical'))) {
+                                // Check cooldown to prevent spam (5 seconds cooldown for same sensor+blok)
+                                const cooldownKey = sensorKey;
+                                const now = Date.now();
+                                const lastNotificationTime = notificationCooldownRef.current[cooldownKey] || 0;
+                                const cooldownPeriod = 5000; // 5 seconds
+                                
+                                if (now - lastNotificationTime >= cooldownPeriod) {
+                                    // Get blok name correctly
+                                    const currentBlok = bloksToListenRef.current.find(b => b.code === blokCode);
+                                    const blokName = currentBlok ? `${currentBlok.code} - ${currentBlok.name}` : blokCode;
+                                    
+                                    const sensorLabel = sensorType === 'suhu_udara' ? 'Suhu Udara' 
+                                        : sensorType === 'kelembapan_udara' ? 'Kelembapan Udara' 
+                                        : 'Kelembapan Tanah';
+                                    const unit = sensorType === 'suhu_udara' ? '°C' : '%';
+                                    
+                                    let message = '';
+                                    let icon = '⚠️';
+                                    let type = 'warning';
+                                    
+                                    if (status === 'critical') {
+                                        if (sensorType === 'suhu_udara') {
+                                            message = `Suhu sangat tinggi di ${blokName}! Nilai: ${value}${unit} - Berbahaya untuk tanaman!`;
+                                            icon = '🔥';
+                                            type = 'critical';
+                                        } else if (sensorType === 'kelembapan_udara') {
+                                            message = `Kelembapan udara sangat rendah di ${blokName}! Nilai: ${value}${unit} - Kondisi udara terlalu kering!`;
+                                            icon = '🌬️';
+                                            type = 'critical';
+                                        } else if (sensorType === 'kelembapan_tanah') {
+                                            message = `Kelembapan tanah sangat rendah di ${blokName}! Nilai: ${value}${unit} - Tanaman membutuhkan penyiraman segera!`;
+                                            icon = '💧';
+                                            type = 'critical';
+                                        }
+                                    } else {
+                                        if (sensorType === 'suhu_udara') {
+                                            message = `Suhu melebihi batas normal di ${blokName}. Nilai: ${value}${unit}`;
+                                            icon = '🌡️';
+                                        } else if (sensorType === 'kelembapan_udara') {
+                                            message = `Kelembapan udara rendah di ${blokName}. Nilai: ${value}${unit} - Kondisi udara kering`;
+                                            icon = '🌬️';
+                                        } else if (sensorType === 'kelembapan_tanah') {
+                                            message = `Kelembapan tanah rendah di ${blokName}. Nilai: ${value}${unit} - Disarankan melakukan penyiraman`;
+                                            icon = '💧';
+                                        }
+                                    }
+                                    
+                                    const notification = {
+                                        id: `notif_${Date.now()}_${sensorKey}`,
+                                        type: type,
+                                        icon: icon,
+                                        message: message,
+                                        sensor: sensorLabel,
+                                        blok: blokName,
+                                        value: `${value}${unit}`,
+                                        timestamp: now,
+                                        time: new Date().toLocaleTimeString('id-ID', { 
+                                            hour: '2-digit', 
+                                            minute: '2-digit' 
+                                        }),
+                                    };
+                                    
+                                    // Add to real-time notifications list
+                                    setRealtimeNotifications(prev => {
+                                        // Remove duplicate notifications for same sensor+blok
+                                        const filtered = prev.filter(n => {
+                                            const notifKey = n.id.split('_').slice(-1)[0];
+                                            return notifKey !== sensorKey;
+                                        });
+                                        // Add new notification at the top (keep only last 50)
+                                        const updated = [notification, ...filtered].slice(0, 50);
+                                        
+                                        // Save to localStorage
+                                        try {
+                                            localStorage.setItem('dashboardNotifications', JSON.stringify(updated));
+                                        } catch (e) {
+                                            console.error('Error saving notifications to localStorage:', e);
+                                        }
+                                        
+                                        return updated;
+                                    });
+                                    
+                                    // Show toast notification (replace previous one)
+                                    setToastNotification(notification);
+                                    
+                                    // Update cooldown
+                                    notificationCooldownRef.current[cooldownKey] = now;
+                                    
+                                    // Auto-remove toast after 5 seconds
+                                    setTimeout(() => {
+                                        setToastNotification(null);
+                                    }, 5000);
+                                }
+                                
+                                // Update previous status
+                                previousSensorStatusRef.current[sensorKey] = status;
+                            } else {
+                                // Update previous status even if no notification
+                                previousSensorStatusRef.current[sensorKey] = status;
+                            }
                         }
                     });
 
@@ -216,6 +432,8 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                         }
 
                         // Update real-time sensor data for "Kondisi Lingkungan"
+                        // Notifications are now generated directly from Firebase listener above
+                        // This only updates the UI display
                         if (Object.keys(sensorUpdates).length > 0) {
                             setRealtimeSensorData(sensorUpdates);
                         }
@@ -281,18 +499,213 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
             });
             firebaseListenersRef.current = [];
         };
-    }, [selectedBlokId, bloks, selectedTimeRange]);
+    }, [selectedBlokId, bloks, selectedTimeRange, thresholds]);
 
-    // Get sensor status helper
+    // Helper function to get mission type label (must be defined before useEffect)
+    const getMissionTypeLabel = (type) => {
+        const labelMap = {
+            'deteksi': '🔍 Deteksi Kematangan',
+            'penyiraman': '💧 Penyiraman',
+            'pemupukan': '🌱 Pemupukan',
+            'kombinasi': '⚡ Kombinasi',
+        };
+        return labelMap[type] || type;
+    };
+    
+    // Helper function to parse status and extract progress
+    const parseStatusAndProgress = (statusString) => {
+        if (!statusString) return { status: null, progress: null };
+        
+        // Check if status contains progress like "in_progress_10%", "in_progress_90%"
+        const progressMatch = statusString.match(/in_progress[_-]?(\d+)%?/i);
+        if (progressMatch) {
+            const progress = parseInt(progressMatch[1]);
+            return { status: 'in_progress', progress: progress };
+        }
+        
+        // Check for completed/done status
+        if (statusString.toLowerCase().includes('completed') || statusString.toLowerCase().includes('done')) {
+            return { status: 'completed', progress: 100 };
+        }
+        
+        // Return status as is
+        return { status: statusString, progress: null };
+    };
+    
+    // Format date time (same as RobotControl)
+    const formatDateTime = (dateString) => {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        return date.toLocaleString('id-ID', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    };
+    
+    // Get status color (for both robot status and schedules)
+    const getStatusColor = (status) => {
+        // For schedule statuses
+        const scheduleStatusMap = {
+            'pending': 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-blue-400 shadow-lg shadow-blue-500/30',
+            'in_progress': 'bg-gradient-to-r from-green-500 to-emerald-500 text-white border-green-400 shadow-lg shadow-green-500/30',
+            'paused': 'bg-gradient-to-r from-orange-400 to-orange-500 text-white border-orange-300 shadow-lg shadow-orange-400/30',
+            'completed': 'bg-gradient-to-r from-green-500 to-emerald-500 text-white border-green-400 shadow-lg shadow-green-500/30',
+            'done': 'bg-gradient-to-r from-green-500 to-emerald-500 text-white border-green-400 shadow-lg shadow-green-500/30',
+            'cancelled': 'bg-gradient-to-r from-gray-400 to-gray-500 text-white border-gray-300',
+            'failed': 'bg-gradient-to-r from-red-400 to-red-500 text-white border-red-300 shadow-lg shadow-red-400/30',
+        };
+        
+        if (scheduleStatusMap[status]) {
+            return scheduleStatusMap[status];
+        }
+        
+        // For robot statuses
+        switch (status) {
+            case 'aktif':
+            case 'active':
+                return 'bg-gradient-to-r from-green-500 to-emerald-500 text-white border-green-400 shadow-lg shadow-green-500/30';
+            case 'idle':
+                return 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-blue-400 shadow-lg shadow-blue-500/30';
+            case 'charging':
+                return 'bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-yellow-300 shadow-lg shadow-yellow-400/30';
+            case 'offline':
+                return 'bg-gradient-to-r from-red-400 to-red-500 text-white border-red-300 shadow-lg shadow-red-400/30';
+            default:
+                return 'bg-gradient-to-r from-gray-400 to-gray-500 text-white border-gray-300';
+        }
+    };
+    
+    // Get status label (for both robot status and schedules)
+    const getStatusLabel = (status) => {
+        const labelMap = {
+            'active': 'AKTIF',
+            'aktif': 'AKTIF',
+            'idle': 'ONLINE',
+            'charging': 'CHARGING',
+            'offline': 'OFFLINE',
+            'in_progress': 'BERJALAN',
+            'paused': 'DIJEDA',
+            'pending': 'TERJADWAL',
+            'completed': 'SELESAI',
+            'done': 'SELESAI',
+            'cancelled': 'DIBATALKAN',
+            'failed': 'GAGAL',
+        };
+        return labelMap[status] || status.toUpperCase();
+    };
+
+    // Helper function to format location
+    const formatLocation = (location) => {
+        if (!location || location === 'Tidak diketahui') return 'Tidak diketahui';
+        
+        // If location is an object
+        if (typeof location === 'object') {
+            if (location.blok_id || location.blok_code) {
+                return location.blok_id || location.blok_code || 'Tidak diketahui';
+            }
+            if (location.name) {
+                return location.name;
+            }
+        }
+        
+        // If location is a string
+        return location;
+    };
+
+    // Firebase Real-time Listener for Robot Status and Battery
+    useEffect(() => {
+        // Listen to robot status
+        const robotStatusRef = ref(database, 'robot/status');
+        const robotStatusCallback = (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                setRealtimeRobotStatus(prev => ({
+                    ...prev,
+                    nama: data.name || prev.nama || 'MOV Bot Alpha',
+                    status: data.current_state || data.status || 'offline',
+                    battery: data.battery_level || data.battery || 0,
+                    lokasi: formatLocation(data.current_location || data.location || 'Tidak diketahui'),
+                }));
+            }
+        };
+        onValue(robotStatusRef, robotStatusCallback);
+        firebaseListenersRef.current.push({ ref: robotStatusRef, callback: robotStatusCallback });
+
+        // Listen to active mission for progress
+        const activeMissionRef = ref(database, 'robot/active_mission');
+        const activeMissionCallback = (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                setRealtimeRobotStatus(prev => ({
+                    ...prev,
+                    misi: data.mission_type ? getMissionTypeLabel(data.mission_type) : null,
+                    progress: data.progress_percentage || 0,
+                }));
+            } else {
+                setRealtimeRobotStatus(prev => ({
+                    ...prev,
+                    misi: null,
+                    progress: 0,
+                }));
+            }
+        };
+        onValue(activeMissionRef, activeMissionCallback);
+        firebaseListenersRef.current.push({ ref: activeMissionRef, callback: activeMissionCallback });
+        
+        // Listen to schedules in Firebase (for real-time status updates)
+        const schedulesRef = ref(database, 'robot/schedules');
+        const schedulesCallback = (snapshot) => {
+            const data = snapshot.val();
+            setFirebaseSchedules(data || {});
+            
+            // Update schedules state with Firebase data
+            if (data) {
+                setSchedules(prevSchedules => {
+                    const updatedSchedules = prevSchedules.map(schedule => {
+                        const scheduleKey = `schedule_${schedule.id}`;
+                        const firebaseData = data[scheduleKey];
+                        
+                        if (firebaseData) {
+                            // Parse status to extract progress if needed
+                            const statusStr = firebaseData.status || schedule.status;
+                            const { status: parsedStatus, progress: parsedProgress } = parseStatusAndProgress(statusStr);
+                            
+                            return {
+                                ...schedule,
+                                status: parsedStatus || firebaseData.status || schedule.status,
+                                progress_percentage: parsedProgress !== null 
+                                    ? parsedProgress 
+                                    : (firebaseData.progress_percentage ?? schedule.progress_percentage),
+                            };
+                        }
+                        return schedule;
+                    });
+                    
+                    // Remove cancelled schedules
+                    return updatedSchedules.filter(s => s.status !== 'cancelled');
+                });
+            }
+        };
+        onValue(schedulesRef, schedulesCallback);
+        firebaseListenersRef.current.push({ ref: schedulesRef, callback: schedulesCallback });
+        
+        return () => {
+            off(robotStatusRef, 'value', robotStatusCallback);
+            off(activeMissionRef, 'value', activeMissionCallback);
+            off(schedulesRef, 'value', schedulesCallback);
+        };
+    }, []);
+    
+    // Legacy function for backward compatibility
     const getSensorStatus = (type, value) => {
         if (type === 'suhu') {
-            if (value >= 40) return 'critical';
-            if (value >= 35) return 'warning';
-            return 'normal';
+            return calculateStatus('suhu_udara', value);
         } else if (type === 'kelembapan') {
-            if (value <= 20) return 'critical';
-            if (value <= 30) return 'warning';
-            return 'normal';
+            // For kelembapan_udara and kelembapan_tanah, use kelembapan_udara threshold as default
+            return calculateStatus('kelembapan_udara', value);
         }
         return 'normal';
     };
@@ -451,21 +864,6 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
         // Firebase listener will automatically update when selectedBlokId changes
     };
 
-    const getStatusColor = (status) => {
-        switch (status) {
-            case 'aktif':
-            case 'active':
-                return 'bg-gradient-to-r from-green-500 to-emerald-500 text-white border-green-400 shadow-lg shadow-green-500/30';
-            case 'idle':
-                return 'bg-gradient-to-r from-gray-400 to-gray-500 text-white border-gray-300 shadow-lg shadow-gray-400/30';
-            case 'charging':
-                return 'bg-gradient-to-r from-yellow-400 to-amber-500 text-white border-yellow-300 shadow-lg shadow-yellow-400/30';
-            case 'offline':
-                return 'bg-gradient-to-r from-red-400 to-red-500 text-white border-red-300 shadow-lg shadow-red-400/30';
-            default:
-                return 'bg-gradient-to-r from-gray-400 to-gray-500 text-white border-gray-300';
-        }
-    };
 
     const getBatteryColor = (level) => {
         if (level > 60) return 'text-green-500';
@@ -552,8 +950,270 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
         <AuthenticatedLayout>
             <Head title="Dashboard" />
 
-            <div className="min-h-screen bg-gradient-to-br from-gray-50 via-green-50/30 to-blue-50/30">
-                <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+            <div className="min-h-screen relative overflow-hidden">
+                {/* Background - Same as Login Page */}
+                <div className="fixed inset-0 -z-10 bg-gradient-to-br from-green-100 via-sky-100 to-green-50">
+                    {/* Subtle animated overlay for depth */}
+                    <motion.div
+                        className="absolute inset-0"
+                        animate={{
+                            background: [
+                                'radial-gradient(circle at 20% 50%, rgba(16, 185, 129, 0.08) 0%, transparent 50%)',
+                                'radial-gradient(circle at 80% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%)',
+                                'radial-gradient(circle at 50% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 50%)',
+                                'radial-gradient(circle at 20% 50%, rgba(16, 185, 129, 0.08) 0%, transparent 50%)',
+                            ],
+                        }}
+                        transition={{
+                            duration: 20,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                        }}
+                    />
+                    
+                    {/* Subtle grid pattern */}
+                    <div 
+                        className="absolute inset-0 opacity-[0.03]"
+                        style={{
+                            backgroundImage: `
+                                linear-gradient(rgba(16, 185, 129, 0.1) 1px, transparent 1px),
+                                linear-gradient(90deg, rgba(16, 185, 129, 0.1) 1px, transparent 1px)
+                            `,
+                            backgroundSize: '50px 50px',
+                        }}
+                    />
+                    
+                    {/* Flying Leaves Animation */}
+                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                        {flyingLeaves.map((leaf) => (
+                            <motion.div
+                                key={leaf.id}
+                                className={`absolute ${leaf.size}`}
+                                initial={{
+                                    left: `${leaf.startX}%`,
+                                    top: `${leaf.startY}%`,
+                                    rotate: leaf.rotation,
+                                    opacity: 0,
+                                }}
+                                animate={{
+                                    left: `${leaf.endX}%`,
+                                    top: `${leaf.startY + 15}%`,
+                                    rotate: [leaf.rotation, leaf.rotation + 360, leaf.rotation + 720],
+                                    opacity: [0, 0.7, 0.5, 0.3, 0],
+                                    y: [0, -20, -10, 0, 10, 20],
+                                }}
+                                transition={{
+                                    duration: leaf.duration,
+                                    repeat: Infinity,
+                                    delay: leaf.delay,
+                                    ease: "linear",
+                                }}
+                            >
+                                <motion.div
+                                    className="w-full h-full"
+                                    animate={{
+                                        filter: [
+                                            'hue-rotate(0deg) saturate(1) brightness(1)',
+                                            'hue-rotate(20deg) saturate(1.15) brightness(1.05)',
+                                            'hue-rotate(40deg) saturate(1.3) brightness(1.1)',
+                                            'hue-rotate(20deg) saturate(1.15) brightness(1.05)',
+                                            'hue-rotate(0deg) saturate(1) brightness(1)',
+                                        ],
+                                    }}
+                                    transition={{
+                                        duration: 12 + (leaf.id * 0.8),
+                                        repeat: Infinity,
+                                        ease: "easeInOut",
+                                        delay: leaf.delay * 0.4,
+                                    }}
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" className="w-full h-full">
+                                        <defs>
+                                            <linearGradient id={`leaf-gradient-dashboard-${leaf.id}`} x1="4" y1="3" x2="20" y2="20">
+                                                <stop offset="0%" stopColor="#4ade80" />
+                                                <stop offset="50%" stopColor="#22c55e" />
+                                                <stop offset="100%" stopColor="#16a34a" />
+                                            </linearGradient>
+                                        </defs>
+                                        <path
+                                            d="M12 3C8 3 4 7 4 12C4 14 5 16 6 17C7 18 9 19 11 19.5C11.5 19.7 12 20 12 20C12 20 12.5 19.7 13 19.5C15 19 17 18 18 17C19 16 20 14 20 12C20 7 16 3 12 3Z"
+                                            fill={`url(#leaf-gradient-dashboard-${leaf.id})`}
+                                            className="drop-shadow-md"
+                                        />
+                                        <path
+                                            d="M12 3C12 3 12 12 12 20"
+                                            stroke="#2d5016"
+                                            strokeWidth="0.5"
+                                            strokeLinecap="round"
+                                        />
+                                    </svg>
+                                </motion.div>
+                            </motion.div>
+                        ))}
+                    </div>
+                    
+                    {/* Floating Particles - Abstract Movement with Pastel Colors */}
+                    {particles.map((particle) => {
+                        // Generate color transitions for pastel colors
+                        const colors = [
+                            `rgba(${particle.baseColor.r}, ${particle.baseColor.g}, ${particle.baseColor.b}, 0.4)`,
+                            `rgba(${particle.baseColor.r + 20}, ${particle.baseColor.g + 20}, ${particle.baseColor.b + 20}, 0.4)`,
+                            `rgba(${particle.baseColor.r - 20}, ${particle.baseColor.g - 20}, ${particle.baseColor.b - 20}, 0.4)`,
+                            `rgba(${particle.baseColor.r}, ${particle.baseColor.g}, ${particle.baseColor.b}, 0.4)`,
+                        ];
+                        
+                        // Abstract movement patterns
+                        let movementAnimation = {};
+                        if (particle.movementType === 0) {
+                            // Circular movement
+                            movementAnimation = {
+                                x: [
+                                    `calc(${particle.left}% + ${particle.radius * Math.cos(0)}px)`,
+                                    `calc(${particle.left}% + ${particle.radius * Math.cos(Math.PI / 2)}px)`,
+                                    `calc(${particle.left}% + ${particle.radius * Math.cos(Math.PI)}px)`,
+                                    `calc(${particle.left}% + ${particle.radius * Math.cos(3 * Math.PI / 2)}px)`,
+                                    `calc(${particle.left}% + ${particle.radius * Math.cos(2 * Math.PI)}px)`,
+                                ],
+                                y: [
+                                    `calc(${particle.top}% + ${particle.radius * Math.sin(0)}px)`,
+                                    `calc(${particle.top}% + ${particle.radius * Math.sin(Math.PI / 2)}px)`,
+                                    `calc(${particle.top}% + ${particle.radius * Math.sin(Math.PI)}px)`,
+                                    `calc(${particle.top}% + ${particle.radius * Math.sin(3 * Math.PI / 2)}px)`,
+                                    `calc(${particle.top}% + ${particle.radius * Math.sin(2 * Math.PI)}px)`,
+                                ],
+                            };
+                        } else if (particle.movementType === 1) {
+                            // Figure-8 movement
+                            movementAnimation = {
+                                x: [
+                                    `${particle.left}%`,
+                                    `${particle.left + particle.radius * 0.5}%`,
+                                    `${particle.left}%`,
+                                    `${particle.left - particle.radius * 0.5}%`,
+                                    `${particle.left}%`,
+                                ],
+                                y: [
+                                    `${particle.top}%`,
+                                    `${particle.top - particle.radius * 0.3}%`,
+                                    `${particle.top}%`,
+                                    `${particle.top + particle.radius * 0.3}%`,
+                                    `${particle.top}%`,
+                                ],
+                            };
+                        } else if (particle.movementType === 2) {
+                            // Zigzag movement
+                            movementAnimation = {
+                                x: [
+                                    `${particle.left}%`,
+                                    `${particle.left + particle.radius * 0.4}%`,
+                                    `${particle.left}%`,
+                                    `${particle.left - particle.radius * 0.4}%`,
+                                    `${particle.left}%`,
+                                ],
+                                y: [
+                                    `${particle.top}%`,
+                                    `${particle.top - particle.radius * 0.6}%`,
+                                    `${particle.top - particle.radius * 0.3}%`,
+                                    `${particle.top - particle.radius * 0.6}%`,
+                                    `${particle.top}%`,
+                                ],
+                            };
+                        } else {
+                            // Wave movement
+                            movementAnimation = {
+                                x: [
+                                    `${particle.left}%`,
+                                    `${particle.left + particle.radius * 0.3}%`,
+                                    `${particle.left}%`,
+                                    `${particle.left - particle.radius * 0.3}%`,
+                                    `${particle.left}%`,
+                                ],
+                                y: [
+                                    `${particle.top}%`,
+                                    `${particle.top - particle.radius * 0.4}%`,
+                                    `${particle.top}%`,
+                                    `${particle.top + particle.radius * 0.4}%`,
+                                    `${particle.top}%`,
+                                ],
+                            };
+                        }
+                        
+                        // Generate box shadow with pastel colors
+                        const baseColorStr = `rgba(${particle.baseColor.r}, ${particle.baseColor.g}, ${particle.baseColor.b}, 0.4)`;
+                        
+                        return (
+                            <motion.div
+                                key={particle.id}
+                                className="absolute rounded-full"
+                                style={{
+                                    width: particle.size + 'px',
+                                    height: particle.size + 'px',
+                                    left: particle.left + '%',
+                                    top: particle.top + '%',
+                                    boxShadow: `0 0 ${particle.size * 2}px ${baseColorStr}, 0 0 ${particle.size * 4}px ${baseColorStr}40`,
+                                }}
+                                animate={{
+                                    ...movementAnimation,
+                                    backgroundColor: colors,
+                                    opacity: [0.3, 0.6, 0.4, 0.6, 0.3],
+                                    scale: [1, 1.2, 1.1, 1.3, 1],
+                                    rotate: [0, 180, 360],
+                                    boxShadow: [
+                                        `0 0 ${particle.size * 2}px ${colors[0]}, 0 0 ${particle.size * 4}px ${colors[0]}40`,
+                                        `0 0 ${particle.size * 2.5}px ${colors[1]}, 0 0 ${particle.size * 5}px ${colors[1]}40`,
+                                        `0 0 ${particle.size * 2.2}px ${colors[2]}, 0 0 ${particle.size * 4.5}px ${colors[2]}40`,
+                                        `0 0 ${particle.size * 2.5}px ${colors[3]}, 0 0 ${particle.size * 5}px ${colors[3]}40`,
+                                        `0 0 ${particle.size * 2}px ${colors[0]}, 0 0 ${particle.size * 4}px ${colors[0]}40`,
+                                    ],
+                                }}
+                                transition={{
+                                    duration: particle.duration * particle.speed,
+                                    repeat: Infinity,
+                                    ease: "easeInOut",
+                                    delay: particle.delay,
+                                }}
+                            />
+                        );
+                    })}
+                    
+                    {/* Subtle animated blobs for depth */}
+                    <motion.div
+                        className="absolute top-0 -left-1/4 w-96 h-96 rounded-full blur-3xl opacity-20"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(20, 184, 166, 0.2))',
+                        }}
+                        animate={{
+                            x: [0, 100, 0],
+                            y: [0, 50, 0],
+                            scale: [1, 1.2, 1],
+                        }}
+                        transition={{
+                            duration: 25,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                        }}
+                    />
+                    <motion.div
+                        className="absolute bottom-0 -right-1/4 w-96 h-96 rounded-full blur-3xl opacity-20"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(99, 102, 241, 0.2))',
+                        }}
+                        animate={{
+                            x: [0, -100, 0],
+                            y: [0, -50, 0],
+                            scale: [1, 1.2, 1],
+                        }}
+                        transition={{
+                            duration: 30,
+                            repeat: Infinity,
+                            ease: "easeInOut",
+                            delay: 2,
+                        }}
+                    />
+                </div>
+                
+                {/* Content */}
+                <div className="relative z-10 p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
                     {/* Header dengan Gradient & Animation */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
@@ -572,19 +1232,19 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                 </motion.div>
                                 <div>
                                     <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                                        Dashboard
+                    Dashboard
                                     </h1>
                                     <p className="text-sm text-gray-600">Ringkasan Sistem MOV</p>
                                 </div>
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
-                            {/* Info Card dengan Glassmorphism */}
+                            {/* Info Card dengan Glassmorphism - More Transparent */}
                             <motion.div
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: 0.3 }}
-                                className="bg-white/80 backdrop-blur-xl border border-green-200/50 rounded-2xl shadow-xl px-4 py-3"
+                                className="bg-white/50 backdrop-blur-lg border border-green-200/40 rounded-2xl shadow-xl px-4 py-3"
                             >
                                 <div className="flex items-center gap-3">
                                     {/* Role Badge */}
@@ -663,96 +1323,228 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                         animate="visible"
                         className="space-y-4 md:space-y-6"
                     >
-                        {/* Status Robot - Enhanced Card */}
+                        {/* Status Robot - Premium Enhanced Card */}
                         <motion.div variants={itemVariants}>
-                            <Card className="p-4 md:p-6 bg-gradient-to-br from-green-50 via-emerald-50 to-green-100 border-2 border-green-200/50 shadow-xl overflow-hidden relative">
-                                {/* Animated Background Pattern */}
-                                <div className="absolute inset-0 opacity-5">
-                                    <div className="absolute inset-0" style={{
-                                        backgroundImage: `radial-gradient(circle at 2px 2px, green 1px, transparent 0)`,
-                                        backgroundSize: '40px 40px'
-                                    }}></div>
+                            <Card className="p-5 md:p-7 bg-gradient-to-br from-blue-50/60 via-cyan-50/50 to-blue-100/60 border-2 border-blue-200/50 shadow-xl overflow-hidden relative group backdrop-blur-lg">
+                                {/* Animated Gradient Background - Soft */}
+                                <div className="absolute inset-0 opacity-30">
+                                    <motion.div
+                                        animate={{
+                                            backgroundPosition: ['0% 0%', '100% 100%'],
+                                        }}
+                                        transition={{
+                                            duration: 15,
+                                            repeat: Infinity,
+                                            repeatType: 'reverse',
+                                        }}
+                                        className="absolute inset-0 bg-gradient-to-br from-blue-200/40 via-cyan-200/40 to-teal-200/40"
+                                        style={{
+                                            backgroundSize: '200% 200%',
+                                        }}
+                                    />
                                 </div>
                                 
+                                {/* Animated Grid Pattern - Soft */}
+                                <div className="absolute inset-0 opacity-5">
+                                    <div className="absolute inset-0" style={{
+                                        backgroundImage: `linear-gradient(rgba(59, 130, 246, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(59, 130, 246, 0.08) 1px, transparent 1px)`,
+                                        backgroundSize: '30px 30px'
+                                    }}></div>
+                                </div>
+
+                                {/* Glow Effect for Online Status - Soft */}
+                                {realtimeRobotStatus.status === 'idle' && (
+                                    <motion.div
+                                        animate={{
+                                            opacity: [0.2, 0.4, 0.2],
+                                            scale: [1, 1.05, 1],
+                                        }}
+                                        transition={{
+                                            duration: 3,
+                                            repeat: Infinity,
+                                            ease: "easeInOut",
+                                        }}
+                                        className="absolute top-0 right-0 w-32 h-32 bg-blue-300/20 rounded-full blur-3xl"
+                                    />
+                                )}
+
+                                {/* Shimmer Effect - Soft */}
+                                <motion.div
+                                    animate={{
+                                        x: ['-100%', '200%'],
+                                    }}
+                                    transition={{
+                                        duration: 4,
+                                        repeat: Infinity,
+                                        repeatDelay: 3,
+                                        ease: "linear",
+                                    }}
+                                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent skew-x-12"
+                                />
+                                
                                 <div className="relative z-10">
-                                    <div className="flex items-start justify-between mb-4">
-                                        <div className="flex items-center gap-3">
+                                    {/* Header Section */}
+                                    <div className="flex items-start justify-between mb-6">
+                                        <div className="flex items-center gap-4">
                                             <motion.div
                                                 animate={{ 
-                                                    scale: robotStatus.status === 'aktif' || robotStatus.status === 'active' ? [1, 1.1, 1] : 1,
-                                                    rotate: robotStatus.status === 'aktif' || robotStatus.status === 'active' ? [0, 5, -5, 0] : 0
+                                                    scale: realtimeRobotStatus.status === 'aktif' || realtimeRobotStatus.status === 'active' 
+                                                        ? [1, 1.15, 1] 
+                                                        : realtimeRobotStatus.status === 'idle'
+                                                        ? [1, 1.08, 1]
+                                                        : 1,
+                                                    rotate: realtimeRobotStatus.status === 'aktif' || realtimeRobotStatus.status === 'active' 
+                                                        ? [0, 5, -5, 0] 
+                                                        : 0,
                                                 }}
-                                                transition={{ duration: 2, repeat: Infinity }}
-                                                className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg"
+                                                transition={{ 
+                                                    duration: 2, 
+                                                    repeat: Infinity,
+                                                    ease: "easeInOut"
+                                                }}
+                                                className="relative"
                                             >
-                                                <Bot className="w-6 h-6 text-white" />
+                                                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 via-cyan-400 to-teal-500 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/40 border-2 border-white/40">
+                                                    <Bot className="w-8 h-8 text-white drop-shadow-lg" />
+                                                </div>
+                                                {/* Pulse Ring for Online Status */}
+                                                {realtimeRobotStatus.status === 'idle' && (
+                                                    <motion.div
+                                                        animate={{
+                                                            scale: [1, 1.5, 1],
+                                                            opacity: [0.6, 0, 0.6],
+                                                        }}
+                                                        transition={{
+                                                            duration: 2,
+                                                            repeat: Infinity,
+                                                            ease: "easeOut",
+                                                        }}
+                                                        className="absolute inset-0 rounded-2xl border-2 border-cyan-400/60"
+                                                    />
+                                                )}
                                             </motion.div>
                                             <div>
-                                                <h3 className="text-lg font-bold text-gray-800">{robotStatus.nama}</h3>
-                                                <p className="text-xs text-gray-600">Status Robot</p>
+                                                <h3 className="text-xl md:text-2xl font-extrabold text-gray-800 mb-1 drop-shadow-sm">
+                                                    {realtimeRobotStatus.nama || 'MOV Bot Alpha'}
+                                                </h3>
+                                                <p className="text-xs md:text-sm text-blue-600 font-medium">Status Robot</p>
                                             </div>
                                         </div>
                                         <motion.span
-                                            whileHover={{ scale: 1.05 }}
-                                            className={`px-3 py-1.5 text-xs font-bold rounded-full border-2 shadow-lg ${getStatusColor(robotStatus.status)}`}
+                                            whileHover={{ scale: 1.1, rotate: 2 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            className={`px-4 py-2 text-sm font-extrabold rounded-full border-2 shadow-xl backdrop-blur-sm ${getStatusColor(realtimeRobotStatus.status)}`}
                                         >
-                                            {robotStatus.status.toUpperCase()}
+                                            {getStatusLabel(realtimeRobotStatus.status)}
                                         </motion.span>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-3 mb-3">
+                                    {/* Stats Grid */}
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        {/* Battery Card */}
                                         <motion.div
-                                            whileHover={{ scale: 1.02 }}
-                                            className="bg-white/80 backdrop-blur-sm p-3 rounded-xl border border-white/50 shadow-md"
+                                            whileHover={{ scale: 1.05, y: -2 }}
+                                            className="relative bg-white/70 backdrop-blur-md p-4 rounded-2xl border border-blue-100/60 shadow-lg overflow-hidden group"
                                         >
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <Battery className={`w-5 h-5 ${getBatteryColor(robotStatus.battery)}`} />
-                                                <span className="text-xs font-medium text-gray-600">Baterai</span>
-                                            </div>
-                                            <div className="flex items-baseline gap-1">
-                                                <p className={`text-2xl font-bold ${getBatteryColor(robotStatus.battery)}`}>
-                                                    {robotStatus.battery}
-                                                </p>
-                                                <span className="text-xs text-gray-500">%</span>
-                                            </div>
-                                            <div className="mt-2 w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                                                <motion.div
-                                                    initial={{ width: 0 }}
-                                                    animate={{ width: `${robotStatus.battery}%` }}
-                                                    transition={{ duration: 1, ease: "easeOut" }}
-                                                    className={`h-full bg-gradient-to-r ${getBatteryGradient(robotStatus.battery)} rounded-full`}
-                                                />
+                                            {/* Glow Effect */}
+                                            <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${getBatteryColor(realtimeRobotStatus.battery).replace('text-', 'bg-').replace('-500', '-500/15')} blur-xl`} />
+                                            
+                                            <div className="relative z-10">
+                                                <div className="flex items-center gap-2.5 mb-3">
+                                                    <div className={`p-2 rounded-lg ${getBatteryColor(realtimeRobotStatus.battery).replace('text-', 'bg-')} bg-opacity-15`}>
+                                                        <Battery className={`w-5 h-5 ${getBatteryColor(realtimeRobotStatus.battery)}`} />
+                                                    </div>
+                                                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Baterai</span>
+                                                </div>
+                                                <div className="flex items-baseline gap-1.5 mb-3">
+                                                    <p className={`text-3xl md:text-4xl font-black ${getBatteryColor(realtimeRobotStatus.battery)} drop-shadow-sm`}>
+                                                        {realtimeRobotStatus.battery}
+                                                    </p>
+                                                    <span className="text-sm text-gray-500 font-bold">%</span>
+                                                </div>
+                                                <div className="relative w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                                                    <motion.div
+                                                        key={realtimeRobotStatus.battery}
+                                                        initial={{ width: 0 }}
+                                                        animate={{ width: `${realtimeRobotStatus.battery}%` }}
+                                                        transition={{ duration: 1.5, ease: "easeOut" }}
+                                                        className={`h-full bg-gradient-to-r ${getBatteryGradient(realtimeRobotStatus.battery)} rounded-full shadow-md relative`}
+                                                    >
+                                                        {/* Shimmer on Battery Bar */}
+                                                        <motion.div
+                                                            animate={{
+                                                                x: ['-100%', '100%'],
+                                                            }}
+                                                            transition={{
+                                                                duration: 2,
+                                                                repeat: Infinity,
+                                                                ease: "linear",
+                                                            }}
+                                                            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent"
+                                                        />
+                                                    </motion.div>
+                                                </div>
                                             </div>
                                         </motion.div>
+
+                                        {/* Location Card */}
                                         <motion.div
-                                            whileHover={{ scale: 1.02 }}
-                                            className="bg-white/80 backdrop-blur-sm p-3 rounded-xl border border-white/50 shadow-md"
+                                            whileHover={{ scale: 1.05, y: -2 }}
+                                            className="relative bg-white/70 backdrop-blur-md p-4 rounded-2xl border border-blue-100/60 shadow-lg overflow-hidden group"
                                         >
-                                            <div className="flex items-center gap-2 mb-2">
-                                                <MapPin className="w-5 h-5 text-blue-500" />
-                                                <span className="text-xs font-medium text-gray-600">Lokasi</span>
+                                            {/* Glow Effect */}
+                                            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-blue-400/15 blur-xl" />
+                                            
+                                            <div className="relative z-10">
+                                                <div className="flex items-center gap-2.5 mb-3">
+                                                    <div className="p-2 rounded-lg bg-blue-500/15">
+                                                        <MapPin className="w-5 h-5 text-blue-500" />
+                                                    </div>
+                                                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Lokasi</span>
+                                                </div>
+                                                <p className="text-lg md:text-xl font-extrabold text-gray-800 leading-tight drop-shadow-sm">
+                                                    {realtimeRobotStatus.lokasi || 'Tidak diketahui'}
+                                                </p>
                                             </div>
-                                            <p className="text-sm font-semibold text-gray-800 leading-tight">{robotStatus.lokasi}</p>
                                         </motion.div>
                                     </div>
 
-                                    {(robotStatus.status === 'aktif' || robotStatus.status === 'active') && robotStatus.misi && (
+                                    {/* Active Mission Card */}
+                                    {(realtimeRobotStatus.status === 'aktif' || realtimeRobotStatus.status === 'active') && realtimeRobotStatus.misi && (
                                         <motion.div
-                                            initial={{ opacity: 0, height: 0 }}
-                                            animate={{ opacity: 1, height: 'auto' }}
-                                            className="bg-white/80 backdrop-blur-sm p-3 rounded-xl border border-white/50 shadow-md"
+                                            initial={{ opacity: 0, height: 0, y: -20 }}
+                                            animate={{ opacity: 1, height: 'auto', y: 0 }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            transition={{ duration: 0.5, ease: "easeOut" }}
+                                            className="relative bg-gradient-to-r from-green-100/80 to-emerald-100/80 backdrop-blur-md p-4 rounded-2xl border border-green-300/50 shadow-lg overflow-hidden"
                                         >
-                                            <div className="flex items-center justify-between mb-2">
-                                                <span className="text-xs font-medium text-gray-700">{robotStatus.misi}</span>
-                                                <span className="text-xs font-bold text-green-600">{robotStatus.progress}%</span>
+                                            <div className="flex items-center justify-between mb-3">
+                                                <span className="text-sm font-bold text-green-700 uppercase tracking-wide">{realtimeRobotStatus.misi}</span>
+                                                <span className="text-sm font-extrabold text-green-600 bg-green-200/50 px-3 py-1 rounded-full">
+                                                    {realtimeRobotStatus.progress}%
+                                                </span>
                                             </div>
-                                            <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                            <div className="relative w-full bg-white/60 rounded-full h-3 overflow-hidden">
                                                 <motion.div
+                                                    key={realtimeRobotStatus.progress}
                                                     initial={{ width: 0 }}
-                                                    animate={{ width: `${robotStatus.progress}%` }}
-                                                    transition={{ duration: 1, ease: "easeOut" }}
-                                                    className="h-full bg-gradient-to-r from-green-500 to-emerald-500 rounded-full shadow-sm"
-                                                />
+                                                    animate={{ width: `${realtimeRobotStatus.progress}%` }}
+                                                    transition={{ duration: 1.5, ease: "easeOut" }}
+                                                    className="h-full bg-gradient-to-r from-green-400 to-emerald-400 rounded-full shadow-md relative"
+                                                >
+                                                    {/* Shimmer on Progress Bar */}
+                                                    <motion.div
+                                                        animate={{
+                                                            x: ['-100%', '100%'],
+                                                        }}
+                                                        transition={{
+                                                            duration: 2,
+                                                            repeat: Infinity,
+                                                            ease: "linear",
+                                                        }}
+                                                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent"
+                                                    />
+                                                </motion.div>
                                             </div>
                                         </motion.div>
                                     )}
@@ -764,7 +1556,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                             {/* Persentase Kematangan - Enhanced Pie Chart */}
                             <motion.div variants={itemVariants}>
-                                <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-purple-200/50 shadow-xl">
+                                <Card className="p-4 md:p-6 bg-white/50 backdrop-blur-lg border-2 border-purple-200/50 shadow-xl">
                                     <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
                                             <PieChartIcon className="w-5 h-5 text-white" />
@@ -903,9 +1695,9 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                 </div>
                                 <div className="grid grid-cols-3 gap-3">
                                     {(() => {
-                                        const suhuStatus = getSensorStatus('suhu', displayedData.suhuUdara);
-                                        const kelembapanUdaraStatus = getSensorStatus('kelembapan', displayedData.kelembabanUdara);
-                                        const kelembapanTanahStatus = getSensorStatus('kelembapan', displayedData.kelembabanTanah);
+                                        const suhuStatus = calculateStatus('suhu_udara', displayedData.suhuUdara);
+                                        const kelembapanUdaraStatus = calculateStatus('kelembapan_udara', displayedData.kelembabanUdara);
+                                        const kelembapanTanahStatus = calculateStatus('kelembapan_tanah', displayedData.kelembabanTanah);
                                         
                                         return (
                                             <>
@@ -913,10 +1705,10 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                     whileHover={{ scale: 1.05, y: -5 }}
                                                     className="relative"
                                                 >
-                                                    <Card className={`p-4 bg-gradient-to-br from-orange-50 via-orange-100 to-amber-50 border-2 ${
-                                                        suhuStatus === 'critical' ? 'border-red-300' : 
-                                                        suhuStatus === 'warning' ? 'border-yellow-300' : 
-                                                        'border-orange-200/50'
+                                                    <Card className={`p-4 bg-gradient-to-br from-orange-50/60 via-orange-100/50 to-amber-50/60 backdrop-blur-lg border-2 ${
+                                                        suhuStatus === 'critical' ? 'border-red-300/60' : 
+                                                        suhuStatus === 'warning' ? 'border-yellow-300/60' : 
+                                                        'border-orange-200/40'
                                                     } shadow-lg overflow-hidden`}>
                                                         <div className="absolute top-0 right-0 w-20 h-20 bg-orange-200/20 rounded-full -mr-10 -mt-10"></div>
                                                         <div className="relative z-10 flex flex-col items-center">
@@ -948,10 +1740,10 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                     whileHover={{ scale: 1.05, y: -5 }}
                                                     className="relative"
                                                 >
-                                                    <Card className={`p-4 bg-gradient-to-br from-blue-50 via-blue-100 to-cyan-50 border-2 ${
-                                                        kelembapanUdaraStatus === 'critical' ? 'border-red-300' : 
-                                                        kelembapanUdaraStatus === 'warning' ? 'border-yellow-300' : 
-                                                        'border-blue-200/50'
+                                                    <Card className={`p-4 bg-gradient-to-br from-blue-50/60 via-blue-100/50 to-cyan-50/60 backdrop-blur-lg border-2 ${
+                                                        kelembapanUdaraStatus === 'critical' ? 'border-red-300/60' : 
+                                                        kelembapanUdaraStatus === 'warning' ? 'border-yellow-300/60' : 
+                                                        'border-blue-200/40'
                                                     } shadow-lg overflow-hidden`}>
                                                         <div className="absolute top-0 right-0 w-20 h-20 bg-blue-200/20 rounded-full -mr-10 -mt-10"></div>
                                                         <div className="relative z-10 flex flex-col items-center">
@@ -983,10 +1775,10 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                     whileHover={{ scale: 1.05, y: -5 }}
                                                     className="relative"
                                                 >
-                                                    <Card className={`p-4 bg-gradient-to-br from-green-50 via-emerald-100 to-green-50 border-2 ${
-                                                        kelembapanTanahStatus === 'critical' ? 'border-red-300' : 
-                                                        kelembapanTanahStatus === 'warning' ? 'border-yellow-300' : 
-                                                        'border-green-200/50'
+                                                    <Card className={`p-4 bg-gradient-to-br from-green-50/60 via-emerald-100/50 to-green-50/60 backdrop-blur-lg border-2 ${
+                                                        kelembapanTanahStatus === 'critical' ? 'border-red-300/60' : 
+                                                        kelembapanTanahStatus === 'warning' ? 'border-yellow-300/60' : 
+                                                        'border-green-200/40'
                                                     } shadow-lg overflow-hidden`}>
                                                         <div className="absolute top-0 right-0 w-20 h-20 bg-green-200/20 rounded-full -mr-10 -mt-10"></div>
                                                         <div className="relative z-10 flex flex-col items-center">
@@ -1020,57 +1812,256 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                             </motion.div>
                         </div>
 
-                        {/* Notifikasi Real-time - Enhanced */}
+                        {/* Notifikasi Real-time - Enhanced dengan Real-time Notifications */}
                         <motion.div variants={itemVariants}>
-                            <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-blue-200/50 shadow-xl">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg">
-                                        <AlertCircle className="w-5 h-5 text-white" />
+                            <Card className="p-4 md:p-6 bg-gradient-to-br from-white via-blue-50/30 to-cyan-50/30 backdrop-blur-xl border-2 border-blue-200/60 shadow-2xl overflow-hidden relative">
+                                {/* Decorative background elements */}
+                                <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-blue-400/20 via-cyan-400/20 to-transparent rounded-full blur-3xl -mr-20 -mt-20"></div>
+                                <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-blue-400/20 via-cyan-400/20 to-transparent rounded-full blur-3xl -ml-16 -mb-16"></div>
+                                
+                                <div className="relative z-10">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <motion.div
+                                                animate={{ 
+                                                    rotate: [0, 5, -5, 0],
+                                                    scale: [1, 1.1, 1]
+                                                }}
+                                                transition={{ duration: 3, repeat: Infinity }}
+                                                className="w-12 h-12 bg-gradient-to-br from-blue-500 via-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-xl shadow-blue-500/30"
+                                            >
+                                                <Bell className="w-6 h-6 text-white" />
+                                            </motion.div>
+                                            <div>
+                                                <h3 className="text-base font-extrabold text-gray-800">Notifikasi Real-time</h3>
+                                                <p className="text-xs text-gray-600 font-medium">Peringatan sensor & sistem</p>
+                                            </div>
+                                        </div>
+                                        {realtimeNotifications.length > 0 && (
+                                            <motion.div
+                                                initial={{ scale: 0 }}
+                                                animate={{ scale: 1 }}
+                                                className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg"
+                                            >
+                                                <span className="text-xs font-bold text-white">{realtimeNotifications.length}</span>
+                                            </motion.div>
+                                        )}
                                     </div>
-                                    <h3 className="text-sm font-bold text-gray-800">Notifikasi Real-time</h3>
+                                    
+                                    {(() => {
+                                        // Combine backend notifications with real-time notifications
+                                        // Filter out duplicates by checking if backend notification already exists in realtime
+                                        const backendNotifs = (notifications || []).filter(backendNotif => {
+                                            // Check if this backend notification doesn't already exist in realtime notifications
+                                            return !realtimeNotifications.some(realtimeNotif => 
+                                                realtimeNotif.blok === backendNotif.blok && 
+                                                realtimeNotif.sensor === backendNotif.sensor &&
+                                                Math.abs(realtimeNotif.timestamp - (backendNotif.timestamp || 0)) < 60000 // Within 1 minute
+                                            );
+                                        });
+                                        const allNotifications = [...realtimeNotifications, ...backendNotifs];
+                                        
+                                        return allNotifications.length > 0 ? (
+                                        <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+                                            <AnimatePresence mode="popLayout">
+                                                {allNotifications.map((notif, index) => {
+                                                    const isCritical = notif.type === 'critical';
+                                                    const isWarning = notif.type === 'warning';
+                                                    
+                                                    return (
+                                                        <motion.div
+                                                            key={notif.id}
+                                                            layout
+                                                            initial={{ opacity: 0, y: -20, scale: 0.9 }}
+                                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                            exit={{ opacity: 0, x: 100, scale: 0.8 }}
+                                                            transition={{ 
+                                                                duration: 0.3,
+                                                                delay: index < 3 ? index * 0.1 : 0
+                                                            }}
+                                                            whileHover={{ scale: 1.02, x: 5 }}
+                                                            className={`p-4 rounded-xl border-2 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all cursor-pointer ${
+                                                                isCritical
+                                                                    ? 'bg-gradient-to-r from-red-50 via-orange-50 to-red-50 border-red-300/70 shadow-red-200/50'
+                                                                    : isWarning
+                                                                    ? 'bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 border-yellow-300/70 shadow-yellow-200/50'
+                                                                    : notif.type === 'success'
+                                                                    ? 'bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 border-green-300/70 shadow-green-200/50'
+                                                                    : 'bg-gradient-to-r from-blue-50 via-cyan-50 to-blue-50 border-blue-300/70 shadow-blue-200/50'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-start gap-3">
+                                                                <motion.div
+                                                                    animate={isCritical ? { 
+                                                                        scale: [1, 1.2, 1],
+                                                                        rotate: [0, 10, -10, 0]
+                                                                    } : {}}
+                                                                    transition={{ duration: 2, repeat: Infinity }}
+                                                                    className="text-2xl flex-shrink-0"
+                                                                >
+                                                                    {notif.icon || '🔔'}
+                                                                </motion.div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="flex items-start justify-between gap-2 mb-1">
+                                                                        <p className={`text-sm font-bold ${
+                                                                            isCritical ? 'text-red-800' : 
+                                                                            isWarning ? 'text-yellow-800' : 
+                                                                            'text-gray-800'
+                                                                        }`}>
+                                                                            {notif.message || notif.sensor}
+                                                                        </p>
+                                                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                                                            {isCritical && (
+                                                                                <motion.div
+                                                                                    animate={{ scale: [1, 1.3, 1] }}
+                                                                                    transition={{ duration: 1, repeat: Infinity }}
+                                                                                    className="w-2 h-2 bg-red-500 rounded-full"
+                                                                                />
+                                                                            )}
+                                                                            {/* Only show delete button for real-time notifications */}
+                                                                            {realtimeNotifications.some(n => n.id === notif.id) && (
+                                                                                <button
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        // Remove notification from real-time notifications
+                                                                                        setRealtimeNotifications(prev => {
+                                                                                            const updated = prev.filter(n => n.id !== notif.id);
+                                                                                            // Save to localStorage
+                                                                                            try {
+                                                                                                localStorage.setItem('dashboardNotifications', JSON.stringify(updated));
+                                                                                            } catch (e) {
+                                                                                                console.error('Error saving notifications to localStorage:', e);
+                                                                                            }
+                                                                                            return updated;
+                                                                                        });
+                                                                                    }}
+                                                                                    className="p-1 hover:bg-red-100 rounded-full transition-colors group"
+                                                                                    title="Hapus notifikasi"
+                                                                                >
+                                                                                    <X className="w-4 h-4 text-gray-400 group-hover:text-red-600 transition-colors" />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        {notif.blok && (
+                                                                            <span className="text-xs px-2 py-0.5 bg-white/60 rounded-full font-medium text-gray-700 border border-gray-200">
+                                                                                📍 {notif.blok}
+                                                                            </span>
+                                                                        )}
+                                                                        {notif.value && (
+                                                                            <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                                                                                isCritical ? 'bg-red-100 text-red-700' : 
+                                                                                isWarning ? 'bg-yellow-100 text-yellow-700' : 
+                                                                                'bg-blue-100 text-blue-700'
+                                                                            }`}>
+                                                                                {notif.value}
+                                                                            </span>
+                                                                        )}
+                                                                        <span className="text-xs text-gray-500 font-medium">
+                                                                            {notif.time || 'Baru saja'}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </motion.div>
+                                                    );
+                                                })}
+                                            </AnimatePresence>
+                                        </div>
+                                    ) : (
+                                        <motion.div 
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            className="text-center py-12"
+                                        >
+                                            <motion.div
+                                                animate={{ scale: [1, 1.1, 1] }}
+                                                transition={{ duration: 2, repeat: Infinity }}
+                                            >
+                                                <Bell className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+                                            </motion.div>
+                                            <p className="text-sm font-medium text-gray-500">Tidak ada notifikasi</p>
+                                            <p className="text-xs text-gray-400 mt-1">Semua sensor dalam kondisi normal</p>
+                                        </motion.div>
+                                        );
+                                    })()}
                                 </div>
-                                {notifications.length > 0 ? (
-                                    <div className="space-y-2">
-                                        <AnimatePresence>
-                                            {notifications.map((notif, index) => (
-                                                <motion.div
-                                                    key={notif.id}
-                                                    initial={{ opacity: 0, x: -20 }}
-                                                    animate={{ opacity: 1, x: 0 }}
-                                                    exit={{ opacity: 0, x: 20 }}
-                                                    transition={{ delay: index * 0.1 }}
-                                                    whileHover={{ scale: 1.02, x: 5 }}
-                                                    className={`p-3 rounded-xl border-2 backdrop-blur-sm ${
-                                                        notif.type === 'success' 
-                                                            ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 shadow-md' 
-                                                            : notif.type === 'warning' 
-                                                            ? 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200 shadow-md'
-                                                            : 'bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200 shadow-md'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-start gap-3">
-                                                        <span className="text-lg">{notif.icon}</span>
-                                                        <div className="flex-1">
-                                                            <p className="text-sm font-medium text-gray-800">{notif.message}</p>
-                                                            <p className="text-xs text-gray-500 mt-1">{notif.time}</p>
-                                                        </div>
-                                                    </div>
-                                                </motion.div>
-                                            ))}
-                                        </AnimatePresence>
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8">
-                                        <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                                        <p className="text-sm text-gray-500">Tidak ada notifikasi</p>
-                                    </div>
-                                )}
                             </Card>
                         </motion.div>
+                        
+                        {/* Toast Notification - Fixed Position (Only Latest) */}
+                        <AnimatePresence>
+                            {toastNotification && (
+                                <motion.div
+                                    key={toastNotification.id}
+                                    initial={{ opacity: 0, x: 400, scale: 0.8, y: -20 }}
+                                    animate={{ opacity: 1, x: 0, scale: 1, y: 0 }}
+                                    exit={{ opacity: 0, x: 400, scale: 0.8, y: -20 }}
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                    className="fixed top-4 right-4 z-[9999] max-w-md w-full md:w-auto"
+                                >
+                                    <motion.div
+                                        className={`p-4 rounded-xl border-2 backdrop-blur-xl shadow-2xl cursor-pointer ${
+                                            toastNotification.type === 'critical'
+                                                ? 'bg-gradient-to-r from-red-500 via-orange-500 to-red-500 border-red-400 text-white'
+                                                : toastNotification.type === 'warning'
+                                                ? 'bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-400 border-yellow-300 text-white'
+                                                : 'bg-gradient-to-r from-blue-500 via-cyan-500 to-blue-500 border-blue-400 text-white'
+                                        }`}
+                                        onClick={() => {
+                                            setToastNotification(null);
+                                        }}
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <motion.div
+                                                animate={toastNotification.type === 'critical' ? { 
+                                                    scale: [1, 1.2, 1],
+                                                    rotate: [0, 10, -10, 0]
+                                                } : {}}
+                                                transition={{ duration: 1, repeat: Infinity }}
+                                                className="text-2xl flex-shrink-0"
+                                            >
+                                                {toastNotification.icon || '🔔'}
+                                            </motion.div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-bold mb-1">{toastNotification.message}</p>
+                                                <div className="flex items-center gap-2 flex-wrap mt-2">
+                                                    {toastNotification.blok && (
+                                                        <span className="text-xs px-2 py-0.5 bg-white/20 rounded-full font-medium">
+                                                            📍 {toastNotification.blok}
+                                                        </span>
+                                                    )}
+                                                    {toastNotification.value && (
+                                                        <span className="text-xs px-2 py-0.5 bg-white/20 rounded-full font-bold">
+                                                            {toastNotification.value}
+                                                        </span>
+                                                    )}
+                                                    <span className="text-xs text-white/80 font-medium">
+                                                        {toastNotification.time}
+                                                    </span>
+                        </div>
+                    </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setToastNotification(null);
+                                                }}
+                                                className="flex-shrink-0 hover:bg-white/20 rounded-full p-1 transition-colors"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
 
                         {/* Tren Sensor - Enhanced dengan Blok Selection */}
                         <motion.div variants={itemVariants}>
-                            <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-green-200/50 shadow-xl">
+                            <Card className="p-4 md:p-6 bg-white/50 backdrop-blur-lg border-2 border-green-200/50 shadow-xl">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
@@ -1269,50 +2260,143 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
 
                         {/* Jadwal Robot - Enhanced */}
                         <motion.div variants={itemVariants}>
-                            <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-purple-200/50 shadow-xl">
+                            <Card className="p-4 md:p-6 bg-white/50 backdrop-blur-lg border-2 border-purple-200/50 shadow-xl">
                                 <div className="flex items-center gap-3 mb-4">
                                     <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
                                         <Calendar className="w-5 h-5 text-white" />
                                     </div>
-                                    <h3 className="text-sm font-bold text-gray-800">Jadwal Robot Berikutnya</h3>
+                                    <h3 className="text-lg font-bold text-gray-800">Jadwal Robot</h3>
                                 </div>
-                                {upcomingSchedules.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {upcomingSchedules.map((jadwal, index) => (
-                                            <motion.div
-                                                key={jadwal.id}
-                                                initial={{ opacity: 0, y: 20 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ delay: index * 0.1 }}
-                                                whileHover={{ scale: 1.02, x: 5 }}
-                                                className="bg-gradient-to-r from-gray-50 to-gray-100 p-3 rounded-xl border-2 border-gray-200 flex items-center justify-between shadow-md"
-                                            >
-                                                <div className="flex-1">
-                                                    <p className="text-sm font-bold text-gray-800 mb-1">{jadwal.tipe} - {jadwal.blok}</p>
-                                                    <div className="flex items-center gap-2">
-                                                        <Clock className="w-3 h-3 text-gray-500" />
-                                                        <p className="text-xs text-gray-600">{jadwal.waktu}</p>
+                                {(() => {
+                                    // Get pending schedules (same logic as RobotControl)
+                                    const pendingSchedules = schedules.filter(s => {
+                                        const scheduleKey = `schedule_${s.id}`;
+                                        const firebaseData = firebaseSchedules[scheduleKey];
+                                        const statusStr = firebaseData?.status || s.status;
+                                        const { status } = parseStatusAndProgress(statusStr);
+                                        const finalStatus = status || statusStr;
+                                        
+                                        // Exclude cancelled schedules
+                                        if (finalStatus === 'cancelled') return false;
+                                        // Exclude completed schedules
+                                        if (finalStatus === 'completed' || finalStatus === 'done') return false;
+                                        
+                                        return finalStatus === 'pending' || finalStatus === 'in_progress' || finalStatus === 'paused';
+                                    }).map(s => {
+                                        const scheduleKey = `schedule_${s.id}`;
+                                        const firebaseData = firebaseSchedules[scheduleKey];
+                                        if (firebaseData) {
+                                            const statusStr = firebaseData.status || s.status;
+                                            const { status: parsedStatus, progress: parsedProgress } = parseStatusAndProgress(statusStr);
+                                            return {
+                                                ...s,
+                                                status: parsedStatus || firebaseData.status || s.status,
+                                                progress_percentage: parsedProgress !== null 
+                                                    ? parsedProgress 
+                                                    : (firebaseData.progress_percentage ?? s.progress_percentage),
+                                            };
+                                        }
+                                        return s;
+                                    }).slice(0, 5); // Limit to 5 for dashboard
+                                    
+                                    return pendingSchedules.length > 0 ? (
+                                        <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
+                                            {pendingSchedules.map((misi, index) => (
+                                                <motion.div
+                                                    key={misi.id}
+                                                    initial={{ opacity: 0, y: 20 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    transition={{ delay: index * 0.05 }}
+                                                    whileHover={{ scale: 1.02, y: -2, x: 5 }}
+                                                    className={`p-5 md:p-6 rounded-2xl border-2 shadow-lg hover:shadow-xl transition-all duration-300 ${
+                                                        misi.status === 'paused' 
+                                                            ? 'bg-gradient-to-br from-orange-50/90 via-orange-100/80 to-amber-50/90 border-orange-300/60 shadow-orange-200/50'
+                                                            : misi.status === 'in_progress'
+                                                            ? 'bg-gradient-to-br from-emerald-50/90 via-green-50/80 to-teal-50/90 border-emerald-300/60 shadow-emerald-200/50'
+                                                            : 'bg-gradient-to-br from-blue-50/90 via-cyan-50/80 to-sky-50/90 border-blue-300/60 shadow-blue-200/50'
+                                                    }`}
+                                                >
+                                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-sm font-bold text-gray-800">
+                                                                {misi.blok_code || misi.blok || `Blok #${misi.blok_id}`}
+                                                            </span>
+                                                            {misi.blok_name && (
+                                                                <span className="text-xs text-gray-500">- {misi.blok_name}</span>
+                                                            )}
+                                                        </div>
+                                                        <span className={`text-xs px-3 py-1.5 rounded-full font-bold shadow-md ${getStatusColor(misi.status)}`}>
+                                                            {getStatusLabel(misi.status)}
+                                                        </span>
                                                     </div>
-                                                </div>
-                                                <span className="px-3 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs font-bold rounded-full shadow-md">
-                                                    {jadwal.status}
-                                                </span>
-                                            </motion.div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-8">
-                                        <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                                        <p className="text-sm text-gray-500">Tidak ada jadwal robot</p>
-                                        <p className="text-xs text-gray-400 mt-1">Jadwalkan misi robot untuk melihatnya di sini</p>
-                                    </div>
-                                )}
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                                                            misi.mission_type === 'deteksi' ? 'bg-purple-100' :
+                                                            misi.mission_type === 'penyiraman' ? 'bg-blue-100' :
+                                                            misi.mission_type === 'pemupukan' ? 'bg-green-100' :
+                                                            'bg-gray-100'
+                                                        }`}>
+                                                            {misi.mission_type === 'deteksi' ? '🔍' :
+                                                             misi.mission_type === 'penyiraman' ? '💧' :
+                                                             misi.mission_type === 'pemupukan' ? '🌱' : '📋'}
+                                                        </div>
+                                                        <p className="text-base font-bold text-gray-800">
+                                                            {getMissionTypeLabel(misi.mission_type)}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs mb-3">
+                                                        <span className="flex items-center gap-1 px-3 py-1.5 bg-white/80 rounded-lg shadow-sm">
+                                                            <Calendar className="w-3 h-3 text-gray-500" />
+                                                            <span className="text-gray-700 font-medium">{formatDateTime(misi.scheduled_at)}</span>
+                                                        </span>
+                                                        {misi.priority && (
+                                                            <span className={`px-3 py-1.5 rounded-lg font-semibold shadow-sm ${
+                                                                misi.priority === 'urgent' ? 'bg-red-100 text-red-700 border border-red-200' :
+                                                                misi.priority === 'high' ? 'bg-orange-100 text-orange-700 border border-orange-200' :
+                                                                misi.priority === 'medium' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+                                                                'bg-gray-100 text-gray-700 border border-gray-200'
+                                                            }`}>
+                                                                {misi.priority === 'urgent' ? '🚨' : misi.priority === 'high' ? '⚡' : ''} {misi.priority.toUpperCase()}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {(misi.progress_percentage > 0 || misi.status === 'in_progress' || misi.status === 'paused') && (
+                                                        <div className="mt-3">
+                                                            <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                                                <motion.div
+                                                                    key={misi.progress_percentage || 0}
+                                                                    initial={{ width: 0 }}
+                                                                    animate={{ width: `${misi.progress_percentage || 0}%` }}
+                                                                    transition={{ duration: 0.5, ease: "easeOut" }}
+                                                                    className={`h-2.5 rounded-full shadow-sm ${
+                                                                        misi.status === 'paused' 
+                                                                            ? 'bg-gradient-to-r from-orange-400 to-amber-500'
+                                                                            : 'bg-gradient-to-r from-green-400 to-emerald-500'
+                                                                    }`}
+                                                                />
+                                                            </div>
+                                                            <p className="text-xs text-gray-600 mt-1 text-center">
+                                                                {misi.status === 'paused' ? 'DIJEDA' : `Progress: ${misi.progress_percentage || 0}%`}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </motion.div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8">
+                                            <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                                            <p className="text-sm text-gray-500">Tidak ada jadwal aktif</p>
+                                            <p className="text-xs text-gray-400 mt-1">Jadwalkan misi robot untuk melihatnya di sini</p>
+                                        </div>
+                                    );
+                                })()}
                             </Card>
                         </motion.div>
 
                         {/* Quick Actions - Enhanced */}
                         <motion.div variants={itemVariants}>
-                            <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-gray-200/50 shadow-xl">
+                            <Card className="p-4 md:p-6 bg-white/50 backdrop-blur-lg border-2 border-gray-200/50 shadow-xl">
                                 <h3 className="text-sm font-bold text-gray-800 mb-4">Quick Actions</h3>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                     <motion.div

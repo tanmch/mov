@@ -6,6 +6,7 @@ use App\Models\Blok;
 use App\Models\RobotSchedule;
 use App\Models\SensorReading;
 use App\Models\Notification;
+use App\Models\SensorThreshold;
 use App\Services\FirebaseSyncService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -48,9 +49,20 @@ class DashboardController extends Controller
         $upcomingSchedules = $this->getUpcomingSchedules();
         
         // Get bloks for Firebase real-time listener
-        $bloks = Blok::whereHas('kebun', function($query) use ($user) {
-            $query->where('owner_id', $user->id);
-        })->with('kebun')->get()->map(function($blok) {
+        // K-Petani and Petani see the same kebuns (owned by K-Petani)
+        if ($user->role === 'k-petani') {
+            // K-Petani sees kebuns they own
+            $bloks = Blok::whereHas('kebun', function($query) use ($user) {
+                $query->where('owner_id', $user->id);
+            })->with('kebun')->get();
+        } else {
+            // Petani sees kebuns owned by K-Petani users
+            $bloks = Blok::whereHas('kebun.owner', function($query) {
+                $query->where('role', 'k-petani');
+            })->with('kebun')->get();
+        }
+        
+        $bloks = $bloks->map(function($blok) {
             return [
                 'id' => $blok->id,
                 'code' => $blok->code,
@@ -71,6 +83,27 @@ class DashboardController extends Controller
             ];
         });
 
+        // Get sensor thresholds (same as Monitoring Sensor IoT)
+        $thresholds = SensorThreshold::orderBy('sensor_type')->get();
+        $defaults = SensorThreshold::getDefaults();
+        
+        $thresholdsData = [];
+        foreach (['suhu_udara', 'kelembapan_udara', 'kelembapan_tanah'] as $sensorType) {
+            $threshold = $thresholds->where('sensor_type', $sensorType)->first();
+            if ($threshold) {
+                $thresholdsData[$sensorType] = [
+                    'normal_min' => $threshold->normal_min,
+                    'normal_max' => $threshold->normal_max,
+                    'warning_min' => $threshold->warning_min,
+                    'warning_max' => $threshold->warning_max,
+                    'critical_min' => $threshold->critical_min,
+                    'critical_max' => $threshold->critical_max,
+                ];
+            } else {
+                $thresholdsData[$sensorType] = $defaults[$sensorType] ?? [];
+            }
+        }
+
         return Inertia::render('Dashboard', [
             'robotStatus' => $robotStatus,
             'maturityData' => $maturityData,
@@ -82,6 +115,7 @@ class DashboardController extends Controller
             'blokOptions' => $blokOptions,
             'selectedTimeRange' => '24h', // Default, data comes from Firebase
             'selectedBlokId' => 'average', // Default, data comes from Firebase
+            'thresholds' => $thresholdsData, // Sensor thresholds for status calculation
         ]);
     }
 
@@ -119,9 +153,18 @@ class DashboardController extends Controller
      */
     protected function getMaturityData(): array
     {
-        $bloks = Blok::whereHas('kebun', function($query) {
-            $query->where('owner_id', Auth::id());
-        })->get();
+        $user = Auth::user();
+        
+        // K-Petani and Petani see the same kebuns
+        if ($user->role === 'k-petani') {
+            $bloks = Blok::whereHas('kebun', function($query) use ($user) {
+                $query->where('owner_id', $user->id);
+            })->get();
+        } else {
+            $bloks = Blok::whereHas('kebun.owner', function($query) {
+                $query->where('role', 'k-petani');
+            })->get();
+        }
 
         if ($bloks->isEmpty()) {
             return [
@@ -150,9 +193,18 @@ class DashboardController extends Controller
      */
     protected function getLatestSensorData(): array
     {
-        $bloks = Blok::whereHas('kebun', function($query) {
-            $query->where('owner_id', Auth::id());
-        })->pluck('id');
+        $user = Auth::user();
+        
+        // K-Petani and Petani see the same kebuns
+        if ($user->role === 'k-petani') {
+            $bloks = Blok::whereHas('kebun', function($query) use ($user) {
+                $query->where('owner_id', $user->id);
+            })->pluck('id');
+        } else {
+            $bloks = Blok::whereHas('kebun.owner', function($query) {
+                $query->where('role', 'k-petani');
+            })->pluck('id');
+        }
 
         if ($bloks->isEmpty()) {
             return [
@@ -366,28 +418,49 @@ class DashboardController extends Controller
      */
     protected function getUpcomingSchedules(): array
     {
-        $bloks = Blok::whereHas('kebun', function($query) {
-            $query->where('owner_id', Auth::id());
-        })->pluck('id');
+        $user = Auth::user();
+        
+        // K-Petani and Petani see the same kebuns
+        if ($user->role === 'k-petani') {
+            $bloks = Blok::whereHas('kebun', function($query) use ($user) {
+                $query->where('owner_id', $user->id);
+            })->pluck('id');
+        } else {
+            $bloks = Blok::whereHas('kebun.owner', function($query) {
+                $query->where('role', 'k-petani');
+            })->pluck('id');
+        }
 
         if ($bloks->isEmpty()) {
             return [];
         }
 
         $schedules = RobotSchedule::whereIn('blok_id', $bloks)
-            ->where('status', 'pending')
-            ->where('scheduled_at', '>=', now())
+            ->whereIn('status', ['pending', 'in_progress', 'paused'])
             ->orderBy('scheduled_at', 'asc')
-            ->limit(5)
-            ->with('blok')
+            ->limit(10)
+            ->with(['blok.kebun', 'creator'])
             ->get()
             ->map(function($schedule) {
                 return [
                     'id' => $schedule->id,
-                    'waktu' => $schedule->scheduled_at->format('H:i'),
-                    'tipe' => ucfirst(str_replace('_', ' ', $schedule->mission_type)),
+                    'blok_id' => $schedule->blok_id,
+                    'blok_code' => $schedule->blok->code ?? null,
+                    'blok_name' => $schedule->blok->name ?? null,
                     'blok' => $schedule->blok->name ?? 'Unknown',
-                    'status' => ucfirst($schedule->status),
+                    'mission_type' => $schedule->mission_type,
+                    'description' => $schedule->description,
+                    'scheduled_at' => $schedule->scheduled_at ? $schedule->scheduled_at->toISOString() : null,
+                    'started_at' => $schedule->started_at ? $schedule->started_at->toISOString() : null,
+                    'completed_at' => $schedule->completed_at ? $schedule->completed_at->toISOString() : null,
+                    'status' => $schedule->status,
+                    'priority' => $schedule->priority,
+                    'progress_percentage' => $schedule->progress_percentage ?? 0,
+                    'mission_details' => $schedule->mission_details ?? [],
+                    'created_by' => $schedule->creator->name ?? null,
+                    // Legacy fields for backward compatibility
+                    'waktu' => $schedule->scheduled_at ? $schedule->scheduled_at->format('H:i') : '-',
+                    'tipe' => ucfirst(str_replace('_', ' ', $schedule->mission_type)),
                 ];
             });
 

@@ -56,7 +56,7 @@ export default function AuthenticatedLayout({ header, children }) {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 via-green-50/30 to-blue-50/30">
+        <div className="min-h-screen bg-transparent">
             {/* Desktop Navigation - MOV Branded */}
             <motion.div 
                 className="hidden md:block fixed top-0 left-0 right-0 z-[100]"
