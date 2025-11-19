@@ -6,6 +6,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Card } from '@/Components/ui/card';
 import { Mail, Lock, User, Phone, Eye, EyeOff, Sparkles } from 'lucide-react';
+import AnimatedBackground from '@/Components/AnimatedBackground';
 
 export default function LoginRegister({ canResetPassword, status, isRegister = false }) {
     const [isLogin, setIsLogin] = useState(!isRegister);
@@ -61,13 +62,6 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
         { id: 5, left: '90%', delay: 0.8, duration: 3.3, stemLength: 42 },
     ];
 
-    // Flying leaves
-    const flyingLeaves = [
-        { id: 1, startX: -10, endX: 110, startY: 15, duration: 15, delay: 0, size: 'w-4 h-4', rotation: 45 },
-        { id: 2, startX: -10, endX: 110, startY: 40, duration: 18, delay: 3, size: 'w-5 h-5', rotation: -30 },
-        { id: 3, startX: -10, endX: 110, startY: 65, duration: 20, delay: 6, size: 'w-4 h-4', rotation: 60 },
-    ];
-
     return (
         <>
             <Head title={isLogin ? "Login" : "Register"} />
@@ -75,59 +69,12 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
             {/* DESKTOP LAYOUT */}
             <div className="hidden lg:flex h-screen w-screen overflow-hidden fixed inset-0">
                 {/* LEFT SIDE - Visual/Animations */}
-                <div className="flex-1 bg-gradient-to-br from-green-100 via-sky-100 to-green-50 relative overflow-hidden flex items-center justify-center">
-                    {/* Flying Leaves */}
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                        {flyingLeaves.map((leaf) => (
-                            <motion.div
-                                key={leaf.id}
-                                className={`absolute ${leaf.size}`}
-                                initial={{
-                                    left: `${leaf.startX}%`,
-                                    top: `${leaf.startY}%`,
-                                    rotate: leaf.rotation,
-                                    opacity: 0,
-                                }}
-                                animate={{
-                                    left: `${leaf.endX}%`,
-                                    top: `${leaf.startY + 15}%`,
-                                    rotate: [leaf.rotation, leaf.rotation + 360, leaf.rotation + 720],
-                                    opacity: [0, 0.8, 0.6, 0.4, 0],
-                                    y: [0, -15, -8, 0, 8, 15],
-                                }}
-                                transition={{
-                                    duration: leaf.duration,
-                                    repeat: Infinity,
-                                    delay: leaf.delay,
-                                    ease: "linear",
-                                }}
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" className="w-full h-full">
-                                    <path
-                                        d="M12 3C8 3 4 7 4 12C4 14 5 16 6 17C7 18 9 19 11 19.5C11.5 19.7 12 20 12 20C12 20 12.5 19.7 13 19.5C15 19 17 18 18 17C19 16 20 14 20 12C20 7 16 3 12 3Z"
-                                        fill="url(#leaf-gradient)"
-                                        className="drop-shadow-md"
-                                    />
-                                    <path
-                                        d="M12 3C12 3 12 12 12 20"
-                                        stroke="#2d5016"
-                                        strokeWidth="0.5"
-                                        strokeLinecap="round"
-                                    />
-                                    <defs>
-                                        <linearGradient id="leaf-gradient" x1="4" y1="3" x2="20" y2="20">
-                                            <stop offset="0%" stopColor="#4ade80" />
-                                            <stop offset="50%" stopColor="#22c55e" />
-                                            <stop offset="100%" stopColor="#16a34a" />
-                                        </linearGradient>
-                                    </defs>
-                                </svg>
-                            </motion.div>
-                        ))}
-                    </div>
+                <div className="flex-1 relative overflow-hidden flex items-center justify-center">
+                    {/* Animated Background - Same as Dashboard */}
+                    <AnimatedBackground />
 
                     {/* Animated Mangoes */}
-                    <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute inset-0 pointer-events-none z-10">
                         {mangoes.map((mango) => (
                             <motion.div
                                 key={mango.id}
@@ -190,7 +137,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                     </div>
 
                     {/* Animated Grass */}
-                    <div className="absolute bottom-0 left-0 right-0 h-28 pointer-events-none overflow-hidden">
+                    <div className="absolute bottom-0 left-0 right-0 h-28 pointer-events-none overflow-hidden z-10">
                         {Array.from({ length: 90 }).map((_, i) => {
                             const layer = i < 30 ? 'back' : i < 60 ? 'mid' : 'front';
                             const randomHeight = layer === 'back' ? 22 + Math.random() * 28 : layer === 'mid' ? 28 + Math.random() * 32 : 32 + Math.random() * 36;
@@ -275,7 +222,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                 </div>
 
                 {/* RIGHT SIDE - Form */}
-                <div className="w-[480px] bg-white/95 backdrop-blur-xl shadow-2xl flex flex-col border-l border-green-100/50 relative">
+                <div className="w-[480px] bg-white/95 backdrop-blur-xl shadow-2xl flex flex-col border-l border-green-100/50 relative z-10">
                     {/* Sticky Tab Switcher */}
                     <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl border-b border-green-100/50 p-4 pb-3">
                         <div className="max-w-md mx-auto w-full">
@@ -508,67 +455,71 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                     </div>
                                 )}
 
+                                {/* ID Kerja - Required for Petani and K-Petani */}
+                                {(selectedRole === 'petani' || selectedRole === 'k-petani') && (
+                                    <div>
+                                        <Label htmlFor="id_kerja" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
+                                            <User className="w-3.5 h-3.5 text-green-600" />
+                                            ID Kerja <span className="text-red-500">*</span>
+                                        </Label>
+                                        <div className="relative">
+                                            <Input 
+                                                id="id_kerja" 
+                                                value={registerForm.data.id_kerja}
+                                                onChange={(e) => registerForm.setData('id_kerja', e.target.value)}
+                                                placeholder="Masukkan ID Kerja dari K-Petani" 
+                                                required 
+                                                className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                            />
+                                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                                        </div>
+                                        {registerForm.errors.id_kerja && (
+                                            <motion.p
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                className="text-xs text-red-600 mt-1 flex items-center gap-1"
+                                            >
+                                                <span>⚠️</span> {registerForm.errors.id_kerja}
+                                            </motion.p>
+                                        )}
+                                        <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                            <span>💡</span> {selectedRole === 'k-petani' 
+                                                ? 'ID Kerja wajib. Dapatkan ID Kerja dari K-Petani yang sudah terdaftar.' 
+                                                : 'ID Kerja wajib. Dapatkan ID Kerja dari K-Petani untuk bisa registrasi.'}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Username - Optional for K-Petani */}
                                 {selectedRole === 'k-petani' && (
-                                    <>
-                                        <div>
-                                            <Label htmlFor="username" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
-                                                <User className="w-3.5 h-3.5 text-green-600" />
-                                                Username
-                                            </Label>
-                                            <div className="relative">
-                                                <Input 
-                                                    id="username" 
-                                                    value={registerForm.data.username}
-                                                    onChange={(e) => registerForm.setData('username', e.target.value)}
-                                                    placeholder="Masukkan username" 
-                                                    required 
-                                                    className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
-                                                />
-                                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                                            </div>
-                                            {registerForm.errors.username && (
-                                                <motion.p
-                                                    initial={{ opacity: 0 }}
-                                                    animate={{ opacity: 1 }}
-                                                    className="text-xs text-red-600 mt-1 flex items-center gap-1"
-                                                >
-                                                    <span>⚠️</span> {registerForm.errors.username}
-                                                </motion.p>
-                                            )}
-                                            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                                                <span>💡</span> Username untuk login sebagai Petani Umum
-                                            </p>
+                                    <div>
+                                        <Label htmlFor="username" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
+                                            <User className="w-3.5 h-3.5 text-green-600" />
+                                            Username <span className="text-gray-400 text-xs">(Opsional)</span>
+                                        </Label>
+                                        <div className="relative">
+                                            <Input 
+                                                id="username" 
+                                                value={registerForm.data.username}
+                                                onChange={(e) => registerForm.setData('username', e.target.value)}
+                                                placeholder="Masukkan username (opsional)" 
+                                                className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                            />
+                                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                                         </div>
-                                        <div>
-                                            <Label htmlFor="id_kerja" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
-                                                <User className="w-3.5 h-3.5 text-green-600" />
-                                                ID Kerja
-                                            </Label>
-                                            <div className="relative">
-                                                <Input 
-                                                    id="id_kerja" 
-                                                    value={registerForm.data.id_kerja}
-                                                    onChange={(e) => registerForm.setData('id_kerja', e.target.value)}
-                                                    placeholder="MK-(Nama)-Kiojay" 
-                                                    required 
-                                                    className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
-                                                />
-                                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                                            </div>
-                                            {registerForm.errors.id_kerja && (
-                                                <motion.p
-                                                    initial={{ opacity: 0 }}
-                                                    animate={{ opacity: 1 }}
-                                                    className="text-xs text-red-600 mt-1 flex items-center gap-1"
-                                                >
-                                                    <span>⚠️</span> {registerForm.errors.id_kerja}
-                                                </motion.p>
-                                            )}
-                                            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                                                <span>💡</span> ID Kerja untuk login sebagai K-Petani
-                                            </p>
-                                        </div>
-                                    </>
+                                        {registerForm.errors.username && (
+                                            <motion.p
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                className="text-xs text-red-600 mt-1 flex items-center gap-1"
+                                            >
+                                                <span>⚠️</span> {registerForm.errors.username}
+                                            </motion.p>
+                                        )}
+                                        <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                            <span>💡</span> Username untuk login alternatif (opsional)
+                                        </p>
+                                    </div>
                                 )}
 
                                 {/* Email and Phone in Grid */}
@@ -774,10 +725,13 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
             </div>
 
             {/* MOBILE LAYOUT */}
-            <div className="lg:hidden min-h-screen bg-gradient-to-br from-green-100 via-sky-100 to-green-50 flex flex-col p-4">
+            <div className="lg:hidden min-h-screen relative overflow-hidden flex flex-col p-4">
+                {/* Animated Background - Same as Dashboard */}
+                <AnimatedBackground />
+                
                 {/* Mobile Header */}
                 <motion.div 
-                    className="text-center mb-6 mt-8"
+                    className="text-center mb-6 mt-8 relative z-10"
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6 }}
@@ -797,7 +751,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                     <p className="text-gray-600 italic text-xs">Mango as an Object Vision</p>
                 </motion.div>
 
-                <Card className="w-full max-w-md mx-auto p-6 shadow-2xl bg-white/95 backdrop-blur-xl border border-green-100/50">
+                <Card className="w-full max-w-md mx-auto p-6 shadow-2xl bg-white/95 backdrop-blur-xl border border-green-100/50 relative z-10">
                     {/* Tab Switcher */}
                     <div className="relative flex gap-2 mb-6 p-1 bg-gray-100/80 rounded-xl">
                         <motion.div
@@ -880,16 +834,23 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                 )}
                             </div>
 
-                            {selectedRole === 'k-petani' && (
+                            {/* ID Kerja - Required for Petani and K-Petani */}
+                            {(selectedRole === 'petani' || selectedRole === 'k-petani') && (
                                 <div>
-                                    <Label htmlFor="id_kerja">ID Kerja</Label>
+                                    <Label htmlFor="id_kerja">ID Kerja <span className="text-red-500">*</span></Label>
                                     <Input 
                                         id="id_kerja" 
                                         value={registerForm.data.id_kerja}
                                         onChange={(e) => registerForm.setData('id_kerja', e.target.value)}
-                                        placeholder="MK-(Nama)-Kiojay" 
+                                        placeholder="Masukkan ID Kerja dari K-Petani" 
                                         required 
                                     />
+                                    {registerForm.errors.id_kerja && (
+                                        <p className="text-xs text-red-600 mt-1">{registerForm.errors.id_kerja}</p>
+                                    )}
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        ID Kerja wajib. Dapatkan ID Kerja dari K-Petani yang sudah terdaftar.
+                                    </p>
                                 </div>
                             )}
 

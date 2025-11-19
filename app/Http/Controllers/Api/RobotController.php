@@ -165,21 +165,36 @@ class RobotController extends Controller
 
             // Push to Firebase for robot to read
             $firebaseError = null;
+            $firebaseWarning = null;
             try {
                 $pushed = $this->firebaseSync->pushRobotScheduleToFirebase($schedule);
 
                 if (!$pushed) {
                     $firebaseError = 'Failed to push to Firebase (check server logs)';
+                    $firebaseWarning = 'Jadwal berhasil dibuat, namun gagal disinkronkan ke Firebase. Silakan periksa koneksi Firebase atau hubungi administrator.';
                     \Log::error("Failed to push schedule to Firebase", [
                         'schedule_id' => $schedule->id,
                         'blok_id' => $schedule->blok_id,
                     ]);
                 }
             } catch (\Exception $e) {
-                $firebaseError = $e->getMessage();
+                $errorMessage = $e->getMessage();
+                
+                // Provide user-friendly warning message
+                if (strpos($errorMessage, 'invalid_grant') !== false || strpos($errorMessage, 'credentials') !== false) {
+                    $firebaseWarning = 'Jadwal berhasil dibuat, namun gagal disinkronkan ke Firebase karena kredensial tidak valid. Silakan hubungi administrator untuk memperbarui kredensial Firebase.';
+                } elseif (strpos($errorMessage, 'Permission denied') !== false) {
+                    $firebaseWarning = 'Jadwal berhasil dibuat, namun gagal disinkronkan ke Firebase karena masalah izin. Silakan hubungi administrator.';
+                } elseif (strpos($errorMessage, 'Network') !== false || strpos($errorMessage, 'timeout') !== false) {
+                    $firebaseWarning = 'Jadwal berhasil dibuat, namun gagal disinkronkan ke Firebase karena masalah koneksi. Silakan coba lagi nanti.';
+                } else {
+                    $firebaseWarning = 'Jadwal berhasil dibuat, namun gagal disinkronkan ke Firebase. Silakan periksa log server untuk detail lebih lanjut.';
+                }
+                
+                $firebaseError = $errorMessage;
                 \Log::error("Exception while pushing schedule to Firebase", [
                     'schedule_id' => $schedule->id,
-                    'error' => $e->getMessage(),
+                    'error' => $errorMessage,
                     'trace' => $e->getTraceAsString(),
                 ]);
             }
@@ -189,8 +204,8 @@ class RobotController extends Controller
             if ($firebaseError) {
                 return response()->json([
                     'success' => true,
-                    'message' => 'Schedule created successfully, but failed to sync to Firebase. Schedule is saved in database.',
-                    'warning' => $firebaseError,
+                    'message' => 'Jadwal berhasil dibuat',
+                    'warning' => $firebaseWarning ?? $firebaseError,
                     'data' => $schedule->load(['blok', 'creator'])
                 ], 201);
             }

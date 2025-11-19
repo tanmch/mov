@@ -15,12 +15,67 @@ class FirebaseService
 
     public function __construct()
     {
-        $this->factory = (new Factory)
-            ->withServiceAccount(config('firebase.credentials.file'))
-            ->withDatabaseUri(config('firebase.database.url'));
+        try {
+            $credentialsPath = config('firebase.credentials.file');
+            
+            // Validate credentials file exists
+            if (!file_exists($credentialsPath)) {
+                throw new \Exception("Firebase credentials file not found at: {$credentialsPath}");
+            }
+            
+            // Validate credentials file is readable
+            if (!is_readable($credentialsPath)) {
+                throw new \Exception("Firebase credentials file is not readable: {$credentialsPath}");
+            }
+            
+            // Validate JSON format
+            $credentialsContent = file_get_contents($credentialsPath);
+            $credentials = json_decode($credentialsContent, true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception("Firebase credentials file is not valid JSON: " . json_last_error_msg());
+            }
+            
+            // Validate required fields
+            $requiredFields = ['type', 'project_id', 'private_key', 'client_email'];
+            foreach ($requiredFields as $field) {
+                if (!isset($credentials[$field])) {
+                    throw new \Exception("Firebase credentials file missing required field: {$field}");
+                }
+            }
+            
+            $this->factory = (new Factory)
+                ->withServiceAccount($credentialsPath)
+                ->withDatabaseUri(config('firebase.database.url'));
 
-        $this->auth = $this->factory->createAuth();
-        $this->database = $this->factory->createDatabase();
+            $this->auth = $this->factory->createAuth();
+            $this->database = $this->factory->createDatabase();
+            
+        } catch (\Kreait\Firebase\Exception\FirebaseException $e) {
+            \Log::error("Firebase initialization failed", [
+                'error' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            // Provide more helpful error message
+            if (strpos($e->getMessage(), 'invalid_grant') !== false) {
+                throw new \Exception(
+                    "Firebase authentication failed: invalid_grant. " .
+                    "This usually means the service account credentials are expired or invalid. " .
+                    "Please regenerate the service account key from Firebase Console. " .
+                    "See FIX_FIREBASE_INVALID_GRANT.md for instructions."
+                );
+            }
+            
+            throw new \Exception("Firebase initialization failed: " . $e->getMessage());
+        } catch (\Exception $e) {
+            \Log::error("Firebase service error", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
     }
 
     /**

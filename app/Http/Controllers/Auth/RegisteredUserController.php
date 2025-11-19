@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\WorkId;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -33,7 +34,21 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        $request->validate([
+        // Validate role-specific requirements
+        $role = $request->role;
+        
+        // ID Kerja is required for petani and k-petani
+        $idKerjaRules = ['nullable', 'string', 'max:255'];
+        if (in_array($role, ['petani', 'k-petani'])) {
+            $idKerjaRules = [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('users', 'id_kerja')->whereNull('deleted_at'),
+            ];
+        }
+
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => [
                 'required',
@@ -49,38 +64,51 @@ class RegisteredUserController extends Controller
                 'max:255',
                 Rule::unique('users', 'username')->whereNull('deleted_at'),
             ],
-            'id_kerja' => [
-                'nullable',
-                'string',
-                'max:255',
-                Rule::unique('users', 'id_kerja')->whereNull('deleted_at'),
-            ],
+            'id_kerja' => $idKerjaRules,
             'phone' => 'nullable|string|max:20',
             'role' => 'required|in:guest,petani,k-petani',
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
+        // Validate work ID exists and is valid for the role
+        if (in_array($role, ['petani', 'k-petani']) && $request->filled('id_kerja')) {
+            $workId = WorkId::where('work_id', $request->id_kerja)
+                ->where('role', $role)
+                ->where('is_used', false)
+                ->first();
+
+            if (!$workId) {
+                return redirect()->back()
+                    ->withErrors(['id_kerja' => 'ID Kerja tidak valid atau sudah digunakan.'])
+                    ->withInput();
+            }
+        }
+
         $userData = [
-            'name' => $request->name,
-            'email' => $request->email,
-            'phone' => $request->phone,
-            'role' => $request->role,
-            'password' => Hash::make($request->password),
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'phone' => $validated['phone'] ?? null,
+            'role' => $validated['role'],
+            'password' => Hash::make($validated['password']),
             'is_active' => true,
-            // firebase_uid is nullable, we don't use Firebase Auth for user registration
         ];
 
         // Add username if provided
         if ($request->filled('username')) {
-            $userData['username'] = $request->username;
+            $userData['username'] = $validated['username'];
         }
 
-        // Add id_kerja if provided (for K-Petani)
+        // Add id_kerja if provided (for petani and k-petani)
         if ($request->filled('id_kerja')) {
-            $userData['id_kerja'] = $request->id_kerja;
+            $userData['id_kerja'] = $validated['id_kerja'];
         }
 
         $user = User::create($userData);
+
+        // Mark work ID as used
+        if (in_array($role, ['petani', 'k-petani']) && $request->filled('id_kerja')) {
+            $workId->markAsUsed($user->id);
+        }
 
         event(new Registered($user));
 

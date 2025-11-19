@@ -7,7 +7,8 @@ import { Button } from '@/Components/ui/button';
 import { Badge } from '@/Components/ui/badge';
 import { useRole } from '@/hooks/useRole';
 import { KPetaniOnly } from '@/Components/RoleGuard';
-import { User, MapPin, Calendar, Settings, Bell, Shield, HelpCircle, LogOut, ChevronRight, Edit, Package, TrendingUp, Users, Plus, UserPlus, Search, Filter, MoreVertical, Trash2, Power, Mail, Phone, X, CheckCircle2, XCircle } from 'lucide-react';
+import { User, MapPin, Calendar, Settings, Bell, Shield, HelpCircle, LogOut, ChevronRight, Edit, Package, TrendingUp, Users, Plus, UserPlus, Search, Filter, MoreVertical, Trash2, Power, Mail, Phone, X, CheckCircle2, XCircle, Key } from 'lucide-react';
+import AnimatedBackground from '@/Components/AnimatedBackground';
 
 export default function Profil({ users = [], filters = {} }) {
     const { auth, flash } = usePage().props;
@@ -264,8 +265,9 @@ export default function Profil({ users = [], filters = {} }) {
         <AuthenticatedLayout>
             <Head title="Profil Saya" />
             
-            <div className="min-h-screen bg-gradient-to-br from-gray-50 via-green-50/30 to-blue-50/30">
-                <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+            <div className="min-h-screen relative overflow-hidden">
+                <AnimatedBackground />
+                <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
                     {/* Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
@@ -463,6 +465,22 @@ export default function Profil({ users = [], filters = {} }) {
                                         </div>
                                         <ChevronRight className="w-5 h-5 text-gray-400" />
                                     </motion.div>
+                                    
+                                    <Link href={route('work-ids.index')}>
+                                        <motion.div
+                                            whileHover={{ x: 5, backgroundColor: 'rgba(34, 197, 94, 0.1)' }}
+                                            className="flex items-center justify-between p-3 rounded-lg border border-green-200 bg-white/50 cursor-pointer"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <Key className="w-5 h-5 text-green-600" />
+                                                <div>
+                                                    <p className="font-medium text-gray-900">Manajemen ID Kerja</p>
+                                                    <p className="text-xs text-gray-600">Buat dan kelola ID Kerja</p>
+                                                </div>
+                                            </div>
+                                            <ChevronRight className="w-5 h-5 text-gray-400" />
+                                        </motion.div>
+                                    </Link>
                                 </div>
                             </Card>
                         </motion.div>

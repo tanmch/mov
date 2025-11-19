@@ -6,9 +6,10 @@ import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
+import AnimatedBackground from '@/Components/AnimatedBackground';
 import { 
     Bot, Play, Pause, Battery, MapPin, Calendar, Clock, CheckCircle, 
-    XCircle, Loader, RefreshCw, AlertCircle, Zap, Activity, 
+    XCircle, Loader, RefreshCw, AlertCircle, AlertTriangle, Zap, Activity, 
     Wifi, WifiOff, X, Trash2, Edit, Power, Camera, Navigation, 
     Radio, Signal, Gauge
 } from 'lucide-react';
@@ -164,7 +165,12 @@ export default function RobotControl({
             
             if (data.success) {
                 if (data.warning) {
-                    showNotification(`Jadwal dibuat, tapi ada peringatan: ${data.warning}`, 'error');
+                    // Show success notification first
+                    showNotification('Jadwal berhasil dibuat!', 'success');
+                    // Then show warning after a short delay
+                    setTimeout(() => {
+                        showNotification(data.warning, 'warning');
+                    }, 500);
                 } else {
                     showNotification('Jadwal misi berhasil dibuat!', 'success');
                 }
@@ -190,23 +196,56 @@ export default function RobotControl({
     
     // Pause/Resume mission (send command to Firebase and update status)
     const handlePauseMission = async () => {
-        if (!isKPetani || (!activeMission && !inProgressScheduleWithFirebase)) return;
+        if (!isKPetani) return;
         
-        const scheduleId = activeMission?.schedule_id || inProgressScheduleWithFirebase?.id;
-        if (!scheduleId) return;
+        // Check if there's an active mission (scheduled or manual)
+        const hasActive = activeMission && (activeMission.schedule_id || activeMission.mission_type);
+        if (!hasActive && !inProgressScheduleWithFirebase) {
+            showNotification('Tidak ada misi yang sedang berjalan', 'warning');
+            return;
+        }
         
-        const scheduleKey = `schedule_${scheduleId}`;
-        const currentStatus = firebaseSchedules[scheduleKey]?.status || inProgressScheduleWithFirebase?.status;
-        const isCurrentlyPaused = currentStatus === 'paused';
+        setIsLoading(true);
         
         try {
+            // Determine if this is a scheduled mission or manual mission
+            const isScheduledMission = activeMission?.schedule_id || inProgressScheduleWithFirebase?.id;
+            const isManualMission = activeMission && !activeMission.schedule_id && activeMission.mission_type;
+            
+            // Get current status
+            let currentStatus = null;
+            let isCurrentlyPaused = false;
+            
+            if (isScheduledMission) {
+                const scheduleId = activeMission?.schedule_id || inProgressScheduleWithFirebase?.id;
+                const scheduleKey = `schedule_${scheduleId}`;
+                const statusStr = firebaseSchedules[scheduleKey]?.status || inProgressScheduleWithFirebase?.status || activeMission?.status;
+                const { status } = parseStatusAndProgress(statusStr);
+                currentStatus = status || statusStr;
+                isCurrentlyPaused = currentStatus === 'paused';
+            } else if (isManualMission) {
+                // For manual missions, check active_mission status
+                const statusStr = activeMission?.status;
+                const { status } = parseStatusAndProgress(statusStr);
+                currentStatus = status || statusStr;
+                isCurrentlyPaused = currentStatus === 'paused';
+            }
+            
             if (isCurrentlyPaused) {
                 // Resume mission
-                await set(ref(database, `robot/schedules/${scheduleKey}/status`), 'in_progress');
+                if (isScheduledMission) {
+                    const scheduleId = activeMission?.schedule_id || inProgressScheduleWithFirebase?.id;
+                    const scheduleKey = `schedule_${scheduleId}`;
+                    await set(ref(database, `robot/schedules/${scheduleKey}/status`), 'in_progress');
+                } else {
+                    // Resume manual mission
+                    await set(ref(database, 'robot/active_mission/status'), 'in_progress');
+                }
                 
                 // Send resume command to robot
                 await set(ref(database, 'robot/commands/resume'), {
-                    schedule_id: scheduleId,
+                    schedule_id: isScheduledMission ? (activeMission?.schedule_id || inProgressScheduleWithFirebase?.id) : null,
+                    mission_type: isManualMission ? activeMission.mission_type : null,
                     timestamp: Date.now(),
                     command: 'resume',
                 });
@@ -214,11 +253,19 @@ export default function RobotControl({
                 showNotification('Misi dilanjutkan', 'success');
             } else {
                 // Pause mission
-                await set(ref(database, `robot/schedules/${scheduleKey}/status`), 'paused');
+                if (isScheduledMission) {
+                    const scheduleId = activeMission?.schedule_id || inProgressScheduleWithFirebase?.id;
+                    const scheduleKey = `schedule_${scheduleId}`;
+                    await set(ref(database, `robot/schedules/${scheduleKey}/status`), 'paused');
+                } else {
+                    // Pause manual mission
+                    await set(ref(database, 'robot/active_mission/status'), 'paused');
+                }
                 
                 // Send pause command to robot
                 await set(ref(database, 'robot/commands/pause'), {
-                    schedule_id: scheduleId,
+                    schedule_id: isScheduledMission ? (activeMission?.schedule_id || inProgressScheduleWithFirebase?.id) : null,
+                    mission_type: isManualMission ? activeMission.mission_type : null,
                     timestamp: Date.now(),
                     command: 'pause',
                 });
@@ -227,7 +274,9 @@ export default function RobotControl({
             }
         } catch (error) {
             console.error('Error pausing/resuming mission:', error);
-            showNotification('Gagal mengirim perintah', 'error');
+            showNotification('Gagal mengirim perintah: ' + error.message, 'error');
+        } finally {
+            setIsLoading(false);
         }
     };
     
@@ -728,13 +777,26 @@ export default function RobotControl({
         return status === 'in_progress' || status === 'paused';
     });
     
-    const isPaused = schedules.some(s => {
-        const scheduleKey = `schedule_${s.id}`;
-        const firebaseData = firebaseSchedules[scheduleKey];
-        const statusStr = firebaseData?.status || s.status;
-        const { status } = parseStatusAndProgress(statusStr);
-        return status === 'paused';
-    });
+    // Check if mission is paused (scheduled or manual)
+    const isPaused = (() => {
+        // Check scheduled missions
+        const scheduledPaused = schedules.some(s => {
+            const scheduleKey = `schedule_${s.id}`;
+            const firebaseData = firebaseSchedules[scheduleKey];
+            const statusStr = firebaseData?.status || s.status;
+            const { status } = parseStatusAndProgress(statusStr);
+            return status === 'paused';
+        });
+        
+        // Check manual active mission
+        if (activeMission && !activeMission.schedule_id && activeMission.mission_type) {
+            const statusStr = activeMission.status;
+            const { status } = parseStatusAndProgress(statusStr);
+            return status === 'paused';
+        }
+        
+        return scheduledPaused;
+    })();
     
     // Merge Firebase data with schedule if found
     const inProgressScheduleWithFirebase = inProgressSchedule ? (() => {
@@ -847,8 +909,11 @@ export default function RobotControl({
         <AuthenticatedLayout>
             <Head title="Kontrol Robot" />
             
-            <div className="min-h-screen bg-gradient-to-br from-gray-50 via-green-50/30 to-blue-50/30">
-                <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+            <div className="min-h-screen relative overflow-hidden">
+                {/* Animated Background - Same as Dashboard */}
+                <AnimatedBackground />
+                
+                <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
                     {/* Notification Toast */}
                     <AnimatePresence>
                         {notification && (
@@ -861,11 +926,15 @@ export default function RobotControl({
                                 <Card className={`p-4 shadow-2xl ${
                                     notification.type === 'success' 
                                         ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white border-green-400' 
+                                        : notification.type === 'warning'
+                                        ? 'bg-gradient-to-r from-yellow-500 to-orange-500 text-white border-yellow-400'
                                         : 'bg-gradient-to-r from-red-500 to-red-600 text-white border-red-400'
                                 }`}>
                                     <div className="flex items-center gap-3">
                                         {notification.type === 'success' ? (
                                             <CheckCircle className="w-5 h-5" />
+                                        ) : notification.type === 'warning' ? (
+                                            <AlertTriangle className="w-5 h-5" />
                                         ) : (
                                             <XCircle className="w-5 h-5" />
                                         )}
@@ -1395,140 +1464,205 @@ export default function RobotControl({
                     <AnimatePresence>
                         {showScheduleForm && isKPetani && (
                             <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
+                                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                                transition={{ duration: 0.3, ease: "easeOut" }}
+                                className="relative"
                             >
-                                <Card className="p-4 md:p-6 border-2 border-green-200 bg-white/80 backdrop-blur-sm shadow-xl">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                            <Calendar className="w-5 h-5" />
-                                            Jadwalkan Misi Baru
-                                        </h3>
-                                        <button
-                                            onClick={() => setShowScheduleForm(false)}
-                                            className="text-gray-500 hover:text-gray-700"
-                                        >
-                                            <X className="w-5 h-5" />
-                                        </button>
+                                <Card className="relative overflow-hidden border-2 border-green-300/50 bg-gradient-to-br from-white via-green-50/30 to-emerald-50/30 backdrop-blur-xl shadow-2xl">
+                                    {/* Animated background decoration */}
+                                    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                                        <div className="absolute -top-20 -right-20 w-64 h-64 bg-green-200/20 rounded-full blur-3xl animate-pulse"></div>
+                                        <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-emerald-200/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
                                     </div>
-                                    <form onSubmit={handleCreateSchedule} className="space-y-4">
-                                        <div>
-                                            <Label className="text-sm font-medium mb-2 block">Tipe Misi</Label>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {['deteksi', 'penyiraman', 'pemupukan', 'kombinasi'].map((type) => (
-                                                    <button
-                                                        key={type}
-                                                        type="button"
-                                                        onClick={() => setSelectedMisiType(type)}
-                                                        className={`p-3 text-sm rounded-xl border-2 transition-all font-medium ${
-                                                            selectedMisiType === type 
-                                                                ? 'border-green-500 bg-green-50 text-green-700 shadow-md' 
-                                                                : 'border-gray-200 hover:border-gray-300'
-                                                        }`}
-                                                    >
-                                                        {getMissionTypeLabel(type)}
-                                                    </button>
-                                                ))}
+                                    
+                                    <div className="relative p-6 md:p-8">
+                                        {/* Header */}
+                                        <div className="flex items-center justify-between mb-6">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-lg">
+                                                    <Calendar className="w-6 h-6 text-white" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-green-700 to-emerald-700 bg-clip-text text-transparent">
+                                                        Jadwalkan Misi Baru
+                                                    </h3>
+                                                    <p className="text-xs text-gray-500 mt-0.5">Buat jadwal misi robot baru</p>
+                                                </div>
                                             </div>
-                                        </div>
-
-                                        <div>
-                                            <Label htmlFor="blok" className="text-sm font-medium mb-2 block">Blok Kebun</Label>
-                                            <select 
-                                                id="blok"
-                                                value={selectedBlokId}
-                                                onChange={(e) => setSelectedBlokId(e.target.value)}
-                                                className="w-full p-3 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all" 
-                                                required
-                                            >
-                                                <option value="">Pilih Blok</option>
-                                                {bloks.map((blok) => (
-                                                    <option key={blok.id} value={blok.id}>
-                                                        {blok.code} - {blok.name}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <div>
-                                                <Label htmlFor="tanggal" className="text-sm font-medium mb-2 block">Tanggal</Label>
-                                                <Input 
-                                                    id="tanggal" 
-                                                    type="date" 
-                                                    className="h-11 text-sm" 
-                                                    value={scheduleDate}
-                                                    onChange={(e) => setScheduleDate(e.target.value)}
-                                                    min={new Date().toISOString().split('T')[0]}
-                                                    required 
-                                                />
-                                            </div>
-                                            <div>
-                                                <Label htmlFor="waktu" className="text-sm font-medium mb-2 block">Waktu</Label>
-                                                <Input 
-                                                    id="waktu" 
-                                                    type="time" 
-                                                    className="h-11 text-sm" 
-                                                    value={scheduleTime}
-                                                    onChange={(e) => setScheduleTime(e.target.value)}
-                                                    required 
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <Label htmlFor="priority" className="text-sm font-medium mb-2 block">Prioritas</Label>
-                                            <select 
-                                                id="priority"
-                                                value={schedulePriority}
-                                                onChange={(e) => setSchedulePriority(e.target.value)}
-                                                className="w-full p-3 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
-                                            >
-                                                <option value="low">Rendah</option>
-                                                <option value="medium">Sedang</option>
-                                                <option value="high">Tinggi</option>
-                                                <option value="urgent">Mendesak</option>
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <Label htmlFor="description" className="text-sm font-medium mb-2 block">Deskripsi (Opsional)</Label>
-                                            <Input 
-                                                id="description" 
-                                                type="text" 
-                                                className="h-11 text-sm" 
-                                                value={scheduleDescription}
-                                                onChange={(e) => setScheduleDescription(e.target.value)}
-                                                placeholder="Tambahkan catatan untuk misi ini..."
-                                            />
-                                        </div>
-
-                                        <div className="flex gap-3">
-                                            <Button
-                                                type="button"
-                                                variant="outline"
+                                            <button
                                                 onClick={() => setShowScheduleForm(false)}
-                                                className="flex-1 h-11"
+                                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-700"
                                             >
-                                                Batal
-                                            </Button>
-                                            <Button 
-                                                type="submit" 
-                                                className="flex-1 h-11 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-                                                disabled={isLoading}
-                                            >
-                                                {isLoading ? (
-                                                    <>
-                                                        <Loader className="w-4 h-4 mr-2 animate-spin" />
-                                                        Menyimpan...
-                                                    </>
-                                                ) : (
-                                                    'Simpan Jadwal'
-                                                )}
-                                            </Button>
+                                                <X className="w-5 h-5" />
+                                            </button>
                                         </div>
-                                    </form>
+
+                                        <form onSubmit={handleCreateSchedule} className="space-y-6">
+                                            {/* Tipe Misi */}
+                                            <div>
+                                                <Label className="text-sm font-semibold mb-3 block text-gray-700 flex items-center gap-2">
+                                                    <Zap className="w-4 h-4 text-green-600" />
+                                                    Tipe Misi
+                                                </Label>
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                    {[
+                                                        { type: 'deteksi', icon: Camera, selectedClass: 'border-blue-500 bg-gradient-to-br from-blue-50 to-blue-100 text-blue-700 shadow-lg ring-2 ring-blue-200', iconClass: 'text-blue-600', bgClass: 'from-blue-400/10 to-blue-600/10' },
+                                                        { type: 'penyiraman', icon: Activity, selectedClass: 'border-cyan-500 bg-gradient-to-br from-cyan-50 to-cyan-100 text-cyan-700 shadow-lg ring-2 ring-cyan-200', iconClass: 'text-cyan-600', bgClass: 'from-cyan-400/10 to-cyan-600/10' },
+                                                        { type: 'pemupukan', icon: Zap, selectedClass: 'border-amber-500 bg-gradient-to-br from-amber-50 to-amber-100 text-amber-700 shadow-lg ring-2 ring-amber-200', iconClass: 'text-amber-600', bgClass: 'from-amber-400/10 to-amber-600/10' },
+                                                        { type: 'kombinasi', icon: Radio, selectedClass: 'border-purple-500 bg-gradient-to-br from-purple-50 to-purple-100 text-purple-700 shadow-lg ring-2 ring-purple-200', iconClass: 'text-purple-600', bgClass: 'from-purple-400/10 to-purple-600/10' }
+                                                    ].map(({ type, icon: Icon, selectedClass, iconClass, bgClass }) => (
+                                                        <motion.button
+                                                            key={type}
+                                                            type="button"
+                                                            onClick={() => setSelectedMisiType(type)}
+                                                            whileHover={{ scale: 1.05 }}
+                                                            whileTap={{ scale: 0.95 }}
+                                                            className={`relative p-4 rounded-2xl border-2 transition-all font-medium overflow-hidden group ${
+                                                                selectedMisiType === type 
+                                                                    ? selectedClass
+                                                                    : 'border-gray-200 hover:border-gray-300 bg-white hover:shadow-md'
+                                                            }`}
+                                                        >
+                                                            {selectedMisiType === type && (
+                                                                <motion.div
+                                                                    initial={{ scale: 0 }}
+                                                                    animate={{ scale: 1 }}
+                                                                    className={`absolute inset-0 bg-gradient-to-br ${bgClass}`}
+                                                                />
+                                                            )}
+                                                            <div className="relative flex flex-col items-center gap-2">
+                                                                <Icon className={`w-5 h-5 ${selectedMisiType === type ? iconClass : 'text-gray-400'}`} />
+                                                                <span className="text-xs md:text-sm">{getMissionTypeLabel(type)}</span>
+                                                            </div>
+                                                        </motion.button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Blok Kebun */}
+                                            <div>
+                                                <Label htmlFor="blok" className="text-sm font-semibold mb-3 block text-gray-700 flex items-center gap-2">
+                                                    <MapPin className="w-4 h-4 text-green-600" />
+                                                    Blok Kebun
+                                                </Label>
+                                                <div className="relative">
+                                                    <select 
+                                                        id="blok"
+                                                        value={selectedBlokId}
+                                                        onChange={(e) => setSelectedBlokId(e.target.value)}
+                                                        className="w-full p-4 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md" 
+                                                        required
+                                                    >
+                                                        <option value="">Pilih Blok Kebun</option>
+                                                        {bloks.map((blok) => (
+                                                            <option key={blok.id} value={blok.id}>
+                                                                {blok.code} - {blok.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+
+                                            {/* Tanggal & Waktu */}
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <Label htmlFor="tanggal" className="text-sm font-semibold mb-3 block text-gray-700 flex items-center gap-2">
+                                                        <Calendar className="w-4 h-4 text-green-600" />
+                                                        Tanggal
+                                                    </Label>
+                                                    <Input 
+                                                        id="tanggal" 
+                                                        type="date" 
+                                                        className="h-12 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md" 
+                                                        value={scheduleDate}
+                                                        onChange={(e) => setScheduleDate(e.target.value)}
+                                                        min={new Date().toISOString().split('T')[0]}
+                                                        required 
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="waktu" className="text-sm font-semibold mb-3 block text-gray-700 flex items-center gap-2">
+                                                        <Clock className="w-4 h-4 text-green-600" />
+                                                        Waktu
+                                                    </Label>
+                                                    <Input 
+                                                        id="waktu" 
+                                                        type="time" 
+                                                        className="h-12 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md" 
+                                                        value={scheduleTime}
+                                                        onChange={(e) => setScheduleTime(e.target.value)}
+                                                        required 
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Prioritas */}
+                                            <div>
+                                                <Label htmlFor="priority" className="text-sm font-semibold mb-3 block text-gray-700 flex items-center gap-2">
+                                                    <AlertCircle className="w-4 h-4 text-green-600" />
+                                                    Prioritas
+                                                </Label>
+                                                <select 
+                                                    id="priority"
+                                                    value={schedulePriority}
+                                                    onChange={(e) => setSchedulePriority(e.target.value)}
+                                                    className="w-full p-4 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md"
+                                                >
+                                                    <option value="low">🟢 Rendah</option>
+                                                    <option value="medium">🟡 Sedang</option>
+                                                    <option value="high">🟠 Tinggi</option>
+                                                    <option value="urgent">🔴 Mendesak</option>
+                                                </select>
+                                            </div>
+
+                                            {/* Deskripsi */}
+                                            <div>
+                                                <Label htmlFor="description" className="text-sm font-semibold mb-3 block text-gray-700 flex items-center gap-2">
+                                                    <Edit className="w-4 h-4 text-green-600" />
+                                                    Deskripsi <span className="text-xs font-normal text-gray-400">(Opsional)</span>
+                                                </Label>
+                                                <Input 
+                                                    id="description" 
+                                                    type="text" 
+                                                    className="h-12 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md" 
+                                                    value={scheduleDescription}
+                                                    onChange={(e) => setScheduleDescription(e.target.value)}
+                                                    placeholder="Tambahkan catatan atau instruksi khusus untuk misi ini..."
+                                                />
+                                            </div>
+
+                                            {/* Action Buttons */}
+                                            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => setShowScheduleForm(false)}
+                                                    className="flex-1 h-12 border-2 border-gray-300 hover:bg-gray-50 font-medium"
+                                                >
+                                                    Batal
+                                                </Button>
+                                                <Button 
+                                                    type="submit" 
+                                                    className="flex-1 h-12 bg-gradient-to-r from-green-600 via-green-500 to-emerald-600 hover:from-green-700 hover:via-green-600 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all font-semibold text-white"
+                                                    disabled={isLoading}
+                                                >
+                                                    {isLoading ? (
+                                                        <>
+                                                            <Loader className="w-5 h-5 mr-2 animate-spin" />
+                                                            Menyimpan...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <CheckCircle className="w-5 h-5 mr-2" />
+                                                            Simpan Jadwal
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            </div>
+                                        </form>
+                                    </div>
                                 </Card>
                             </motion.div>
                         )}

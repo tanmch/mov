@@ -4,6 +4,7 @@ import { Head, usePage, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
+import AnimatedBackground from '@/Components/AnimatedBackground';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Thermometer, Droplets, Sprout, AlertTriangle, TrendingUp, Calendar, Activity, Wifi, WifiOff, Clock, Edit2, Save, X, CheckCircle2, XCircle, MapPin, ChevronDown, Filter } from 'lucide-react';
 import { useRole } from '@/hooks/useRole';
@@ -895,14 +896,9 @@ export default function MonitoringSensor({
                 </motion.div>
             )}
             
-            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/20 to-cyan-50/20 relative overflow-hidden">
-                {/* Animated Background Pattern */}
-                <div className="absolute inset-0 opacity-30">
-                    <div className="absolute inset-0" style={{
-                        backgroundImage: `radial-gradient(circle at 2px 2px, rgba(16, 185, 129, 0.15) 1px, transparent 0)`,
-                        backgroundSize: '50px 50px'
-                    }}></div>
-                </div>
+            <div className="min-h-screen relative overflow-hidden">
+                {/* Animated Background - Same as Dashboard */}
+                <AnimatedBackground />
                 
                 <div className="relative z-10 p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
                     {/* Enhanced Header */}

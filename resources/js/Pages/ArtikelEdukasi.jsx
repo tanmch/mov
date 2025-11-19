@@ -7,6 +7,7 @@ import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Search, BookOpen, TrendingUp, Lightbulb, Eye, Clock } from 'lucide-react';
+import AnimatedBackground from '@/Components/AnimatedBackground';
 
 export default function ArtikelEdukasi() {
     const { auth } = usePage().props;
@@ -95,8 +96,9 @@ export default function ArtikelEdukasi() {
         <AuthenticatedLayout>
             <Head title="Artikel & Edukasi" />
             
-            <div className="min-h-screen bg-gradient-to-br from-gray-50 via-green-50/30 to-blue-50/30">
-                <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+            <div className="min-h-screen relative overflow-hidden">
+                <AnimatedBackground />
+                <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
                     {/* Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}

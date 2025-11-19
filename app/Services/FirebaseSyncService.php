@@ -77,12 +77,26 @@ class FirebaseSyncService
             return true;
 
         } catch (\Exception $e) {
+            $errorMessage = $e->getMessage();
+            
+            // Provide more specific error messages
+            if (strpos($errorMessage, 'invalid_grant') !== false) {
+                $errorMessage = "Firebase credentials are invalid or expired. Please regenerate service account key from Firebase Console.";
+            } elseif (strpos($errorMessage, 'Permission denied') !== false) {
+                $errorMessage = "Firebase permission denied. Please check service account permissions.";
+            } elseif (strpos($errorMessage, 'Network') !== false || strpos($errorMessage, 'timeout') !== false) {
+                $errorMessage = "Firebase network error. Please check your internet connection.";
+            }
+            
             Log::error("Failed to push schedule to Firebase", [
                 'schedule_id' => $schedule->id,
-                'error' => $e->getMessage(),
+                'error' => $errorMessage,
+                'original_error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            return false;
+            
+            // Re-throw with more user-friendly message
+            throw new \Exception($errorMessage);
         }
     }
 
