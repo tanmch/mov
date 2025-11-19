@@ -7,6 +7,7 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { FileText, Download, Filter, Calendar, BarChart3, TrendingUp, CheckCircle } from 'lucide-react';
+import AnimatedBackground from '@/Components/AnimatedBackground';
 
 export default function LaporanEkspor() {
     const { auth } = usePage().props;
@@ -77,8 +78,9 @@ export default function LaporanEkspor() {
         <AuthenticatedLayout>
             <Head title="Laporan & Ekspor" />
             
-            <div className="min-h-screen bg-gradient-to-br from-gray-50 via-green-50/30 to-blue-50/30">
-                <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+            <div className="min-h-screen relative overflow-hidden">
+                <AnimatedBackground />
+                <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
                     {/* Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}

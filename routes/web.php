@@ -95,6 +95,10 @@ Route::middleware('auth')->group(function () {
             Route::put('/schedules/{id}/cancel', [\App\Http\Controllers\Api\RobotController::class, 'cancelSchedule'])->name('robot.schedules.cancel');
             Route::delete('/schedules/{id}', [\App\Http\Controllers\Api\RobotController::class, 'deleteSchedule'])->name('robot.schedules.delete');
         });
+        
+        // Work ID Management (K-Petani only)
+        Route::resource('work-ids', \App\Http\Controllers\WorkIdController::class);
+        Route::post('/work-ids/generate-multiple', [\App\Http\Controllers\WorkIdController::class, 'generateMultiple'])->name('work-ids.generate-multiple');
     });
 });
 
