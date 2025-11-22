@@ -425,13 +425,29 @@ class FirebaseSyncService
                 ]
             );
 
-            // Initialize empty sensors
+            // Initialize sensors with realistic default values
+            $timestamp = now()->timestamp * 1000; // milliseconds
             $this->firebase->setDatabaseData(
                 "kebuns/kebun_{$kebunId}/bloks/{$blokCode}/sensors",
                 [
-                    'suhu_udara' => ['value' => 0, 'unit' => '°C', 'status' => 'normal'],
-                    'kelembapan_udara' => ['value' => 0, 'unit' => '%', 'status' => 'normal'],
-                    'kelembapan_tanah' => ['value' => 0, 'unit' => '%', 'status' => 'normal'],
+                    'suhu_udara' => [
+                        'value' => round(25 + (rand(0, 100) / 10), 1), // 25.0 - 35.0°C
+                        'unit' => '°C',
+                        'status' => 'normal',
+                        'timestamp' => $timestamp,
+                    ],
+                    'kelembapan_udara' => [
+                        'value' => round(50 + (rand(0, 300) / 10), 1), // 50.0 - 80.0%
+                        'unit' => '%',
+                        'status' => 'normal',
+                        'timestamp' => $timestamp,
+                    ],
+                    'kelembapan_tanah' => [
+                        'value' => round(40 + (rand(0, 400) / 10), 1), // 40.0 - 80.0%
+                        'unit' => '%',
+                        'status' => 'normal',
+                        'timestamp' => $timestamp,
+                    ],
                 ]
             );
 

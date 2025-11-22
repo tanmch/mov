@@ -39,12 +39,20 @@ class UserController extends Controller
 
         $users = $query->orderBy('created_at', 'desc')->get();
 
+        $currentUser = $request->user();
+        
         return Inertia::render('Profil', [
             'users' => $users,
             'filters' => [
                 'search' => $search,
                 'role' => $role,
             ],
+            'currentUser' => $currentUser ? [
+                'id' => $currentUser->id,
+                'name' => $currentUser->name,
+                'email' => $currentUser->email,
+                'enable_sensor_simulation' => $currentUser->enable_sensor_simulation ?? false,
+            ] : null,
         ]);
     }
 

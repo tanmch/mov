@@ -4,20 +4,53 @@ import NavLink from '@/Components/NavLink';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink';
 import BottomNav from '@/Components/BottomNav';
 import TopNav from '@/Components/TopNav';
+import Sidebar from '@/Components/Sidebar';
+import GlobalRealtimeNotification from '@/Components/GlobalRealtimeNotification';
 import { Link, usePage } from '@inertiajs/react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, useScroll, useMotionValueEvent } from 'framer-motion';
 import { Bell, Menu, X, User, LogOut, Settings } from 'lucide-react';
 
 export default function AuthenticatedLayout({ header, children }) {
-    const user = usePage().props.auth.user;
+    const { auth, globalBloks = [] } = usePage().props;
+    const user = auth?.user;
     const [scrolled, setScrolled] = useState(false);
     const [isVisible, setIsVisible] = useState(true);
     const [lastScrollY, setLastScrollY] = useState(0);
     const { scrollY } = useScroll();
+    const [sidebarOpen, setSidebarOpen] = useState(true);
 
     const [showingNavigationDropdown, setShowingNavigationDropdown] =
         useState(false);
+
+    // Listen for sidebar toggle events - Only update if value actually changed
+    const prevSidebarOpenRef = useRef(sidebarOpen);
+    useEffect(() => {
+        const handleSidebarToggle = (event) => {
+            if (!event.detail.isMobile && prevSidebarOpenRef.current !== event.detail.isOpen) {
+                prevSidebarOpenRef.current = event.detail.isOpen;
+                setSidebarOpen(event.detail.isOpen);
+            }
+        };
+
+        window.addEventListener('sidebarToggle', handleSidebarToggle);
+
+        // Load saved state only once on mount
+        if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+            const savedState = localStorage.getItem('sidebarOpen');
+            if (savedState !== null) {
+                const parsedState = savedState === 'true';
+                if (prevSidebarOpenRef.current !== parsedState) {
+                    prevSidebarOpenRef.current = parsedState;
+                    setSidebarOpen(parsedState);
+                }
+            }
+        }
+
+        return () => {
+            window.removeEventListener('sidebarToggle', handleSidebarToggle);
+        };
+    }, []);
 
     useMotionValueEvent(scrollY, "change", (latest) => {
         setScrolled(latest > 20);
@@ -211,6 +244,9 @@ export default function AuthenticatedLayout({ header, children }) {
                 </motion.div>
             </motion.div>
             
+            {/* Sidebar - Premium with Quick Actions */}
+            <Sidebar />
+
             {/* Bottom Navigation Bar - Dynamic Island Style */}
             <TopNav />
 
@@ -306,7 +342,27 @@ export default function AuthenticatedLayout({ header, children }) {
                 </header>
             )}
 
-            <main className="pb-20 md:pb-24">{children}</main>
+            {/* Main Content with Sidebar Spacing */}
+            <motion.main 
+                className="pb-20 md:pb-24 transition-all duration-300"
+                initial={false}
+                animate={{
+                    paddingLeft: typeof window !== 'undefined' && window.innerWidth >= 1024 
+                        ? (sidebarOpen ? 340 : 108) 
+                        : 0,
+                }}
+                transition={{
+                    duration: 0.3,
+                    ease: [0.4, 0, 0.2, 1],
+                }}
+            >
+                <div className="max-w-7xl mx-auto px-4 md:px-6">
+                    {children}
+                </div>
+            </motion.main>
+            
+            {/* Global Realtime Notification - Appears on all pages */}
+            <GlobalRealtimeNotification bloks={globalBloks} />
         </div>
     );
 }

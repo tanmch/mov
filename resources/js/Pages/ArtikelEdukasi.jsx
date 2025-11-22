@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -6,24 +6,66 @@ import { Card } from '@/Components/ui/card';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
-import { Search, BookOpen, TrendingUp, Lightbulb, Eye, Clock } from 'lucide-react';
+import { Search, BookOpen, TrendingUp, Lightbulb, Eye, Clock, RefreshCw, ExternalLink, MessageCircle } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
+import SkeletonLoader, { SkeletonCard } from '@/Components/ui/SkeletonLoader';
+import EmptyState from '@/Components/ui/EmptyState';
+import BackButton from '@/Components/BackButton';
 
 export default function ArtikelEdukasi() {
     const { auth } = usePage().props;
     const userRole = auth?.user?.role;
     const [selectedCategory, setSelectedCategory] = useState('semua');
     const [searchQuery, setSearchQuery] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSearching, setIsSearching] = useState(false);
 
     const categories = [
         { id: 'semua', label: 'Semua', icon: '📚' },
+        { id: 'berita', label: 'Berita Mangga', icon: '📰' },
         { id: 'tips', label: 'Tips Pertanian', icon: '💡' },
         { id: 'teknologi', label: 'Teknologi', icon: '🤖' },
         { id: 'jenis-mangga', label: 'Jenis Mangga', icon: '🥭' },
         { id: 'perawatan', label: 'Perawatan', icon: '🌱' },
     ];
 
-    const articles = [
+    const [articles, setArticles] = useState([
+        {
+            id: 'detik-1',
+            title: 'Ekspor Mangga Indonesia Meningkat 45% ke Jepang',
+            category: 'berita',
+            excerpt: 'Kementerian Pertanian mencatat peningkatan signifikan ekspor mangga gedong gincu...',
+            image: '📈',
+            date: '20 Nov 2025',
+            readTime: '4 min',
+            views: 5234,
+            source: 'Detik Finance',
+            externalUrl: 'https://finance.detik.com/berita-ekonomi-bisnis/d-7046387/ekspor-mangga-naik-45-persen-jepang-jadi-pasar-utama'
+        },
+        {
+            id: 'detik-2',
+            title: 'Harga Mangga Gedong Gincu Tembus Rp 50 Ribu per Kg',
+            category: 'berita',
+            excerpt: 'Jelang musim panen raya, harga mangga gedong gincu di tingkat petani mencapai rekor...',
+            image: '💰',
+            date: '18 Nov 2025',
+            readTime: '3 min',
+            views: 4532,
+            source: 'Detik Food',
+            externalUrl: 'https://food.detik.com/info-kuliner/d-7108524/harga-mangga-gedong-gincu-naik-ini-penyebabnya'
+        },
+        {
+            id: 'detik-3',
+            title: 'Teknologi AI Deteksi Kematangan Mangga Dikembangkan IPB',
+            category: 'teknologi',
+            excerpt: 'Peneliti IPB berhasil kembangkan sistem AI yang dapat mendeteksi tingkat kematangan...',
+            image: '🤖',
+            date: '15 Nov 2025',
+            readTime: '5 min',
+            views: 3876,
+            source: 'Detik News',
+            externalUrl: 'https://news.detik.com/berita/d-7095432/ipb-kembangkan-teknologi-ai-untuk-petani-mangga'
+        },
         {
             id: 1,
             title: 'Cara Mendeteksi Kematangan Mangga dengan Akurat',
@@ -33,6 +75,7 @@ export default function ArtikelEdukasi() {
             date: '28 Okt 2025',
             readTime: '5 min',
             views: 1234,
+            source: 'MOV Platform',
         },
         {
             id: 2,
@@ -43,6 +86,7 @@ export default function ArtikelEdukasi() {
             date: '27 Okt 2025',
             readTime: '7 min',
             views: 2156,
+            source: 'MOV Platform',
         },
         {
             id: 3,
@@ -53,6 +97,7 @@ export default function ArtikelEdukasi() {
             date: '26 Okt 2025',
             readTime: '8 min',
             views: 3421,
+            source: 'MOV Platform',
         },
         {
             id: 4,
@@ -63,6 +108,7 @@ export default function ArtikelEdukasi() {
             date: '25 Okt 2025',
             readTime: '6 min',
             views: 1876,
+            source: 'MOV Platform',
         },
         {
             id: 5,
@@ -73,18 +119,26 @@ export default function ArtikelEdukasi() {
             date: '24 Okt 2025',
             readTime: '9 min',
             views: 2543,
+            source: 'MOV Platform',
         },
-        {
-            id: 6,
-            title: 'AI dalam Pertanian: Masa Depan Farming',
-            category: 'teknologi',
-            excerpt: 'Penggunaan kecerdasan buatan untuk prediksi panen dan deteksi penyakit tanaman secara dini...',
-            image: '🧠',
-            date: '23 Okt 2025',
-            readTime: '10 min',
-            views: 4123,
-        },
-    ];
+    ]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setIsLoading(false);
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, []);
+
+    useEffect(() => {
+        if (searchQuery) {
+            setIsSearching(true);
+            const timer = setTimeout(() => {
+                setIsSearching(false);
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [searchQuery]);
 
     const filteredArticles = articles.filter((article) => {
         const matchesCategory = selectedCategory === 'semua' || article.category === selectedCategory;
@@ -99,21 +153,42 @@ export default function ArtikelEdukasi() {
             <div className="min-h-screen relative overflow-hidden">
                 <AnimatedBackground />
                 <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                    {/* Back Button */}
+                    <div className="mb-4">
+                        <BackButton href="/dashboard" />
+                    </div>
+                    
                     {/* Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-3 mb-6"
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6"
                     >
-                        <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <BookOpen className="w-6 h-6 text-white" />
+                        <div className="flex items-center gap-3">
+                            <motion.div
+                                animate={{ rotate: [0, 5, -5, 0] }}
+                                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                                className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg"
+                            >
+                                <BookOpen className="w-6 h-6 text-white" />
+                            </motion.div>
+                            <div>
+                                <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                                    Artikel & Edukasi 📚
+                                </h1>
+                                <p className="text-sm text-gray-600">Belajar tentang perawatan mangga dan teknologi terkini</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                                Artikel & Edukasi 📚
-                            </h1>
-                            <p className="text-sm text-gray-600">Belajar tentang perawatan mangga dan teknologi terkini</p>
-                        </div>
+                        <Button
+                            onClick={() => setIsLoading(true)}
+                            variant="outline"
+                            size="sm"
+                            disabled={isLoading}
+                            className="flex items-center gap-2"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                            Refresh
+                        </Button>
                     </motion.div>
 
                     {/* Search Bar */}
@@ -122,16 +197,23 @@ export default function ArtikelEdukasi() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
                     >
-                        <div className="relative">
-                            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                            <Input
-                                type="text"
-                                placeholder="Cari artikel..."
-                                className="pl-12 h-12 text-base border-2 border-gray-200 focus:border-green-500 rounded-xl"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                        </div>
+                        <Card className="p-4 bg-white/90 backdrop-blur-xl border-2 border-white/50 shadow-lg">
+                            <div className="relative">
+                                <Search className={`absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors ${
+                                    searchQuery ? 'text-green-500' : 'text-gray-400'
+                                }`} />
+                                <Input
+                                    type="text"
+                                    placeholder="Cari artikel..."
+                                    className="pl-12 pr-12 h-12 text-base border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl bg-white/80"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                                {isSearching && (
+                                    <RefreshCw className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-green-500 animate-spin" />
+                                )}
+                            </div>
+                        </Card>
                     </motion.div>
 
                     {/* Categories */}
@@ -185,30 +267,54 @@ export default function ArtikelEdukasi() {
                     )}
 
                     {/* Articles Grid */}
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.4 }}
-                    >
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-bold text-gray-900">
-                                {selectedCategory === 'semua' ? 'Semua Artikel' : 'Hasil Pencarian'}
-                            </h3>
-                            <span className="text-sm text-gray-600 font-medium">{filteredArticles.length} artikel</span>
-                        </div>
-
+                    {isLoading ? (
                         <div className="space-y-4">
-                            <AnimatePresence>
-                                {filteredArticles.map((article, index) => (
-                                    <motion.div
-                                        key={article.id}
-                                        initial={{ opacity: 0, x: -20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        exit={{ opacity: 0, x: 20 }}
-                                        transition={{ delay: index * 0.05 }}
-                                        whileHover={{ scale: 1.02, x: 5 }}
-                                    >
-                                        <Card className="p-4 md:p-6 border-2 border-gray-200 hover:border-green-500 hover:shadow-xl transition-all cursor-pointer">
+                            <SkeletonLoader type="list" count={6} />
+                        </div>
+                    ) : (
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.4 }}
+                        >
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-bold text-gray-900">
+                                    {selectedCategory === 'semua' ? 'Semua Artikel' : 'Hasil Pencarian'}
+                                </h3>
+                                <span className="text-sm text-gray-600 font-medium">{filteredArticles.length} artikel</span>
+                            </div>
+
+                            {filteredArticles.length === 0 ? (
+                                <EmptyState
+                                    icon={BookOpen}
+                                    title="Artikel Tidak Ditemukan"
+                                    message={searchQuery 
+                                        ? `Tidak ada artikel yang cocok dengan "${searchQuery}"`
+                                        : `Belum ada artikel dalam kategori "${categories.find(c => c.id === selectedCategory)?.label}"`
+                                    }
+                                />
+                            ) : (
+                                <div className="space-y-4">
+                                    <AnimatePresence>
+                                        {filteredArticles.map((article, index) => (
+                                            <motion.div
+                                                key={article.id}
+                                                initial={{ opacity: 0, x: -20 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                exit={{ opacity: 0, x: 20 }}
+                                                transition={{ delay: index * 0.05 }}
+                                                whileHover={{ scale: 1.02, x: 5 }}
+                                            >
+                                                <Card 
+                                                    className={`p-4 md:p-6 bg-white/80 backdrop-blur-lg border-2 border-gray-200 hover:border-green-500 hover:shadow-xl transition-all ${
+                                                        article.externalUrl ? 'cursor-pointer' : ''
+                                                    }`}
+                                                    onClick={() => {
+                                                        if (article.externalUrl) {
+                                                            window.open(article.externalUrl, '_blank', 'noopener,noreferrer');
+                                                        }
+                                                    }}
+                                                >
                                             <div className="flex gap-4">
                                                 {/* Image/Icon */}
                                                 <motion.div
@@ -229,15 +335,25 @@ export default function ArtikelEdukasi() {
                                                             {article.readTime}
                                                         </div>
                                                     </div>
-                                                    <h4 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">{article.title}</h4>
-                                                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">{article.excerpt}</p>
-                                                    <div className="flex items-center justify-between text-xs text-gray-500">
+                                                    <div className="flex items-start justify-between gap-2 mb-2">
+                                                        <h4 className="text-lg font-bold text-gray-900 line-clamp-2 flex-1">{article.title}</h4>
+                                                        {article.externalUrl && (
+                                                            <ExternalLink className="w-4 h-4 text-green-600 flex-shrink-0 mt-1" />
+                                                        )}
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 mb-2 line-clamp-2">{article.excerpt}</p>
+                                                    <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
                                                         <span>{article.date}</span>
                                                         <span className="flex items-center gap-1">
                                                             <Eye className="w-3 h-3" />
                                                             {article.views} views
                                                         </span>
                                                     </div>
+                                                    {article.source && (
+                                                        <div className="text-xs text-gray-500">
+                                                            Sumber: <span className="font-medium text-gray-700">{article.source}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </Card>
@@ -245,7 +361,9 @@ export default function ArtikelEdukasi() {
                                 ))}
                             </AnimatePresence>
                         </div>
-                    </motion.div>
+                            )}
+                        </motion.div>
+                    )}
 
                     {/* Quick Links for Guests */}
                     {userRole === 'guest' && (
@@ -304,22 +422,91 @@ export default function ArtikelEdukasi() {
                         </Card>
                     </motion.div>
 
-                    {/* Info for Mitra */}
+                    {/* Customer Service Card */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.7 }}
                     >
-                        <Card className="p-4 md:p-6 bg-blue-50 border-2 border-blue-200 shadow-xl">
-                            <h4 className="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
-                                <span>👨‍🌾</span> Informasi Mitra
-                            </h4>
-                            <p className="text-sm text-gray-700 mb-4">
-                                Tertarik untuk menjadi mitra atau distributor hasil panen? Hubungi kami untuk informasi lebih lanjut.
-                            </p>
-                            <Button variant="outline" className="w-full border-2 border-blue-500 text-blue-600 hover:bg-blue-50 font-medium">
-                                Hubungi Mitra
-                            </Button>
+                        <Card className="p-4 md:p-6 bg-gradient-to-r from-blue-50 to-cyan-50 border-2 border-blue-200 shadow-xl">
+                            <div className="flex items-start gap-4">
+                                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg">
+                                    <MessageCircle className="w-6 h-6 text-white" />
+                                </div>
+                                <div className="flex-1">
+                                    <h4 className="text-lg font-bold text-gray-900 mb-2">Butuh Bantuan?</h4>
+                                    <p className="text-sm text-gray-700 mb-4">
+                                        Hubungi customer service kami untuk bantuan teknis, konsultasi, atau pertanyaan lainnya.
+                                    </p>
+                                    <Link href="/customer-service">
+                                        <Button className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 w-full shadow-lg text-white">
+                                            Hubungi MOV Center 💬
+                                        </Button>
+                                    </Link>
+                                </div>
+                            </div>
+                        </Card>
+                    </motion.div>
+
+                    {/* Info for Mitra - Enhanced */}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.8 }}
+                    >
+                        <Card className="p-0 overflow-hidden border-2 border-green-200 shadow-xl">
+                            <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-4 md:p-6 text-white">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-lg">
+                                        🏢
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-bold text-white">Mitra Projek Eksportir</h3>
+                                        <p className="text-sm text-green-50">PT Sindang Sukses</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="p-4 md:p-6">
+                                <p className="text-sm text-gray-700 mb-4">
+                                    Distributor & eksportir mangga terpercaya dengan pengalaman 10+ tahun. Siap membantu memasarkan hasil panen Anda ke pasar nasional dan internasional.
+                                </p>
+                                
+                                {/* Quick Stats */}
+                                <div className="grid grid-cols-3 gap-2 mb-4">
+                                    <div className="bg-green-50 p-3 rounded-lg text-center border border-green-200">
+                                        <p className="text-lg font-bold text-green-600">500+</p>
+                                        <p className="text-xs text-gray-600">Petani</p>
+                                    </div>
+                                    <div className="bg-blue-50 p-3 rounded-lg text-center border border-blue-200">
+                                        <p className="text-lg font-bold text-blue-600">15+</p>
+                                        <p className="text-xs text-gray-600">Negara</p>
+                                    </div>
+                                    <div className="bg-yellow-50 p-3 rounded-lg text-center border border-yellow-200">
+                                        <p className="text-lg font-bold text-yellow-600">1000+</p>
+                                        <p className="text-xs text-gray-600">Ton/Th</p>
+                                    </div>
+                                </div>
+                                
+                                {/* Benefits */}
+                                <div className="bg-gray-50 p-4 rounded-lg mb-4 border border-gray-200">
+                                    <p className="text-sm font-semibold text-gray-700 mb-2">Keuntungan bermitra:</p>
+                                    <div className="space-y-2">
+                                        {['Harga kompetitif', 'Pembayaran tepat waktu', 'Akses pasar ekspor'].map((benefit, idx) => (
+                                            <div key={idx} className="flex items-center gap-2 text-sm text-gray-700">
+                                                <span className="text-green-600 font-bold">✓</span>
+                                                <span>{benefit}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                <Link href="/artikel">
+                                    <Button className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg font-medium">
+                                        Lihat Detail & Kontak 📞
+                                    </Button>
+                                </Link>
+                            </div>
                         </Card>
                     </motion.div>
                 </div>

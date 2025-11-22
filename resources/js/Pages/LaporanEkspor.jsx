@@ -1,13 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, usePage } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
+import { Badge } from '@/Components/ui/badge';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
-import { FileText, Download, Filter, Calendar, BarChart3, TrendingUp, CheckCircle } from 'lucide-react';
+import { FileText, Download, Filter, Calendar, BarChart3, TrendingUp, CheckCircle, RefreshCw, Sparkles, X } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
+import SkeletonLoader, { SkeletonList } from '@/Components/ui/SkeletonLoader';
+import EmptyState from '@/Components/ui/EmptyState';
+import LoadingOverlay from '@/Components/ui/LoadingOverlay';
+import BackButton from '@/Components/BackButton';
 
 export default function LaporanEkspor() {
     const { auth } = usePage().props;
@@ -15,6 +20,9 @@ export default function LaporanEkspor() {
     const [selectedLaporanType, setSelectedLaporanType] = useState('deteksi');
     const [selectedFormat, setSelectedFormat] = useState('pdf');
     const [showFilter, setShowFilter] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(null);
 
     const ringkasanData = {
         totalDeteksi: 1250,
@@ -23,7 +31,7 @@ export default function LaporanEkspor() {
         prediksiPanen: '15 Nov 2024',
     };
 
-    const laporanTersedia = [
+    const [laporanTersedia, setLaporanTersedia] = useState([
         {
             id: 1,
             judul: 'Laporan Deteksi Kematangan - Oktober 2024',
@@ -48,15 +56,30 @@ export default function LaporanEkspor() {
             ukuran: '950 KB',
             format: 'PDF',
         },
-    ];
+    ]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setIsLoading(false);
+        }, 1200);
+        return () => clearTimeout(timer);
+    }, []);
 
     const handleGenerateLaporan = (e) => {
         e.preventDefault();
-        // Toast akan ditambahkan nanti
+        setIsGenerating(true);
+        setTimeout(() => {
+            setIsGenerating(false);
+            // Toast akan ditambahkan nanti
+        }, 2000);
     };
 
     const handleDownload = (laporan) => {
-        // Download logic akan ditambahkan nanti
+        setIsDownloading(laporan.id);
+        setTimeout(() => {
+            setIsDownloading(null);
+            // Download logic akan ditambahkan nanti
+        }, 1500);
     };
 
     const getTipeColor = (tipe) => {
@@ -81,23 +104,58 @@ export default function LaporanEkspor() {
             <div className="min-h-screen relative overflow-hidden">
                 <AnimatedBackground />
                 <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                    <LoadingOverlay show={isGenerating} message="Membuat laporan..." />
+                    
+                    {/* Back Button */}
+                    <div className="mb-4">
+                        <BackButton href="/dashboard" />
+                    </div>
+                    
                     {/* Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-3 mb-6"
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6"
                     >
-                        <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <FileText className="w-6 h-6 text-white" />
+                        <div className="flex items-center gap-3">
+                            <motion.div
+                                animate={{ rotate: [0, 5, -5, 0] }}
+                                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                                className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg"
+                            >
+                                <FileText className="w-6 h-6 text-white" />
+                            </motion.div>
+                            <div>
+                                <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                                    Laporan & Ekspor
+                                </h1>
+                                <p className="text-sm text-gray-600">Generate & Download</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                                Laporan & Ekspor
-                            </h1>
-                            <p className="text-sm text-gray-600">Generate & Download</p>
-                        </div>
+                        <Button
+                            onClick={() => setIsLoading(true)}
+                            variant="outline"
+                            size="sm"
+                            disabled={isLoading}
+                            className="flex items-center gap-2"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                            Refresh
+                        </Button>
                     </motion.div>
 
+                    {/* Loading State */}
+                    {isLoading ? (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <SkeletonCard />
+                                <SkeletonCard />
+                            </div>
+                            <SkeletonCard />
+                            <SkeletonLoader type="list" count={3} />
+                        </div>
+                    ) : (
+                        <>
                     {/* Ringkasan Quick Stats */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
@@ -245,10 +303,20 @@ export default function LaporanEkspor() {
 
                                 <Button 
                                     type="submit" 
+                                    disabled={isGenerating}
                                     className="w-full h-12 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg"
                                 >
-                                    <Download className="w-5 h-5 mr-2" />
-                                    Generate & Download
+                                    {isGenerating ? (
+                                        <>
+                                            <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                                            Membuat Laporan...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download className="w-5 h-5 mr-2" />
+                                            Generate & Download
+                                        </>
+                                    )}
                                 </Button>
                             </form>
                         </Card>
@@ -262,47 +330,69 @@ export default function LaporanEkspor() {
                     >
                         <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-blue-200/50 shadow-xl">
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg">
+                                <motion.div
+                                    animate={{ rotate: [0, 360] }}
+                                    transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                                    className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg"
+                                >
                                     <Calendar className="w-5 h-5 text-white" />
-                                </div>
+                                </motion.div>
                                 <h3 className="text-lg font-bold text-gray-800">Laporan Tersimpan</h3>
                             </div>
-                            <div className="space-y-3">
-                                {laporanTersedia.map((laporan, index) => (
-                                    <motion.div
-                                        key={laporan.id}
-                                        initial={{ opacity: 0, x: -20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: index * 0.1 }}
-                                        whileHover={{ scale: 1.02, x: 5 }}
-                                        className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-xl border-2 border-gray-200 shadow-md"
-                                    >
-                                        <div className="flex items-start justify-between mb-2">
-                                            <div className="flex-1">
-                                                <p className="text-sm font-bold text-gray-800 mb-2">{laporan.judul}</p>
-                                                <div className="flex items-center gap-2">
-                                                    <Badge className={`${getTipeColor(laporan.tipe)} border-2`}>
-                                                        {laporan.tipe}
-                                                    </Badge>
-                                                    <span className="text-xs text-gray-600">{laporan.format}</span>
+                            {laporanTersedia.length === 0 ? (
+                                <EmptyState
+                                    icon={FileText}
+                                    title="Belum Ada Laporan"
+                                    message="Generate laporan baru untuk melihatnya di sini."
+                                />
+                            ) : (
+                                <div className="space-y-3">
+                                    {laporanTersedia.map((laporan, index) => (
+                                        <motion.div
+                                            key={laporan.id}
+                                            initial={{ opacity: 0, x: -20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ delay: index * 0.1 }}
+                                            whileHover={{ scale: 1.02, x: 5 }}
+                                            className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-xl border-2 border-gray-200 shadow-md hover:shadow-lg transition-all"
+                                        >
+                                            <div className="flex items-start justify-between mb-2">
+                                                <div className="flex-1">
+                                                    <p className="text-sm font-bold text-gray-800 mb-2">{laporan.judul}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge className={`${getTipeColor(laporan.tipe)} border-2`}>
+                                                            {laporan.tipe}
+                                                        </Badge>
+                                                        <span className="text-xs text-gray-600">{laporan.format}</span>
+                                                    </div>
                                                 </div>
+                                                <motion.div
+                                                    whileHover={{ scale: 1.1 }}
+                                                    whileTap={{ scale: 0.9 }}
+                                                >
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleDownload(laporan)}
+                                                        disabled={isDownloading === laporan.id}
+                                                        className="h-9 px-3"
+                                                    >
+                                                        {isDownloading === laporan.id ? (
+                                                            <RefreshCw className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            <Download className="w-4 h-4" />
+                                                        )}
+                                                    </Button>
+                                                </motion.div>
                                             </div>
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleDownload(laporan)}
-                                                className="h-9 px-3"
-                                            >
-                                                <Download className="w-4 h-4" />
-                                            </Button>
-                                        </div>
-                                        <div className="flex items-center gap-4 mt-2 text-xs text-gray-600">
-                                            <span>📅 {laporan.tanggal}</span>
-                                            <span>📦 {laporan.ukuran}</span>
-                                        </div>
-                                    </motion.div>
-                                ))}
-                            </div>
+                                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-600">
+                                                <span>📅 {laporan.tanggal}</span>
+                                                <span>📦 {laporan.ukuran}</span>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            )}
                         </Card>
                     </motion.div>
 
@@ -384,6 +474,8 @@ export default function LaporanEkspor() {
                             </ul>
                         </Card>
                     </motion.div>
+                        </>
+                    )}
                 </div>
             </div>
         </AuthenticatedLayout>

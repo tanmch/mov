@@ -7,6 +7,8 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import AnimatedBackground from '@/Components/AnimatedBackground';
+import { useHeaderOffset } from '@/hooks/useHeaderOffset';
+import DeleteMissionModal from '@/Components/MissionHistory/DeleteMissionModal';
 import { 
     Bot, Play, Pause, Battery, MapPin, Calendar, Clock, CheckCircle, 
     XCircle, Loader, RefreshCw, AlertCircle, AlertTriangle, Zap, Activity, 
@@ -15,6 +17,7 @@ import {
 } from 'lucide-react';
 import { database } from '@/config/firebase';
 import { ref, onValue, off, set } from 'firebase/database';
+import BackButton from '@/Components/BackButton';
 
 export default function RobotControl({ 
     bloks = [], 
@@ -26,6 +29,7 @@ export default function RobotControl({
     const { auth } = page.props;
     const userRole = auth?.user?.role;
     const isKPetani = userRole === 'k-petani';
+    const topOffset = useHeaderOffset();
     
     // States
     const [robotStatus, setRobotStatus] = useState({
@@ -43,10 +47,13 @@ export default function RobotControl({
     const [showManualControl, setShowManualControl] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [notification, setNotification] = useState(null);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [missionToDelete, setMissionToDelete] = useState(null);
     
     // Form states
     const [selectedMisiType, setSelectedMisiType] = useState('deteksi');
-    const [selectedBlokId, setSelectedBlokId] = useState('');
+    const [selectedBlokFrom, setSelectedBlokFrom] = useState('');
+    const [selectedBlokTo, setSelectedBlokTo] = useState('');
     const [scheduleDate, setScheduleDate] = useState('');
     const [scheduleTime, setScheduleTime] = useState('');
     const [scheduleDescription, setScheduleDescription] = useState('');
@@ -54,13 +61,18 @@ export default function RobotControl({
     
     // Manual control states
     const [manualMissionType, setManualMissionType] = useState('deteksi');
-    const [manualBlokId, setManualBlokId] = useState('');
+    const [manualBlokFrom, setManualBlokFrom] = useState('');
+    const [manualBlokTo, setManualBlokTo] = useState('');
     
     // Firebase listeners ref
     const statusListenerRef = useRef(null);
     const missionListenerRef = useRef(null);
     const schedulesListenerRef = useRef(null);
     const completedMissionsListenerRef = useRef(null);
+    const firebaseListenersRef = useRef([]);
+    
+    // State for Firebase-discovered bloks
+    const [firebaseBloks, setFirebaseBloks] = useState([]);
     
     // Get CSRF token
     const getCsrfToken = () => {
@@ -122,12 +134,40 @@ export default function RobotControl({
         
         setIsLoading(true);
         try {
+            if (!selectedBlokFrom) {
+                showNotification('Pilih blok terlebih dahulu', 'error');
+                setIsLoading(false);
+                return;
+            }
+            
             const scheduledDateTime = new Date(`${scheduleDate}T${scheduleTime}`);
             if (scheduledDateTime <= new Date()) {
                 showNotification('Waktu jadwal harus di masa depan!', 'error');
                 setIsLoading(false);
                 return;
             }
+            
+            // Get selected blok codes (single or range)
+            const selectedBlokCodes = getSelectedBlokCodes(selectedBlokFrom, selectedBlokTo);
+            
+            if (selectedBlokCodes.length === 0) {
+                showNotification('Tidak ada blok yang valid dipilih', 'error');
+                setIsLoading(false);
+                return;
+            }
+            
+            // Use first blok as primary for API compatibility
+            const primaryBlokCode = selectedBlokCodes[0];
+            const selectedBlok = bloksToUse.find(b => 
+                (b.code || b.id?.toString()) === primaryBlokCode
+            );
+            
+            const blokDbId = selectedBlok?.id || (isNaN(primaryBlokCode) ? null : parseInt(primaryBlokCode));
+            
+            // Format blok range display
+            const blokRangeDisplay = selectedBlokCodes.length > 1 
+                ? `${selectedBlokFrom}-${selectedBlokTo}` 
+                : primaryBlokCode;
             
             const response = await fetch('/api/robot/schedules', {
                 method: 'POST',
@@ -139,12 +179,18 @@ export default function RobotControl({
                 },
                 credentials: 'same-origin',
                 body: JSON.stringify({
-                    blok_id: parseInt(selectedBlokId),
+                    blok_id: primaryBlokCode, // Primary blok code for API compatibility
+                    blok_range: blokRangeDisplay, // Display format (e.g., "A1-B2")
+                    blok_ids: selectedBlokCodes, // Array of all blok codes in range
+                    kebun_id: 1, // Default to kebun_1 to match Firebase structure
                     mission_type: selectedMisiType,
-                    description: scheduleDescription,
+                    description: scheduleDescription || (selectedBlokCodes.length > 1 ? `Misi untuk ${selectedBlokCodes.length} blok (${blokRangeDisplay})` : ''),
                     scheduled_at: scheduledDateTime.toISOString(),
                     priority: schedulePriority,
-                    mission_details: {},
+                    mission_details: {
+                        blok_count: selectedBlokCodes.length,
+                        blok_range: blokRangeDisplay,
+                    },
                 }),
             });
             
@@ -164,19 +210,24 @@ export default function RobotControl({
             const data = await response.json();
             
             if (data.success) {
+                const blokCount = selectedBlokCodes.length > 1 
+                    ? `${selectedBlokCodes.length} blok (${blokRangeDisplay})`
+                    : primaryBlokCode;
+                
                 if (data.warning) {
                     // Show success notification first
-                    showNotification('Jadwal berhasil dibuat!', 'success');
+                    showNotification(`Jadwal berhasil dibuat untuk ${blokCount}!`, 'success');
                     // Then show warning after a short delay
                     setTimeout(() => {
                         showNotification(data.warning, 'warning');
                     }, 500);
                 } else {
-                    showNotification('Jadwal misi berhasil dibuat!', 'success');
+                    showNotification(`Jadwal misi berhasil dibuat untuk ${blokCount}!`, 'success');
                 }
                 setShowScheduleForm(false);
                 // Reset form
-                setSelectedBlokId('');
+                setSelectedBlokFrom('');
+                setSelectedBlokTo('');
                 setScheduleDate('');
                 setScheduleTime('');
                 setScheduleDescription('');
@@ -327,7 +378,7 @@ export default function RobotControl({
     const handleStartRobotManually = async () => {
         if (!isKPetani) return;
         
-        if (!manualBlokId) {
+        if (!manualBlokFrom) {
             showNotification('Pilih blok terlebih dahulu', 'error');
             return;
         }
@@ -340,15 +391,36 @@ export default function RobotControl({
         setIsLoading(true);
         
         try {
-            const selectedBlok = bloks.find(b => b.id === parseInt(manualBlokId) || b.id === manualBlokId);
-            const blokCode = selectedBlok?.code || `blok_${manualBlokId}`;
+            // Get selected blok codes (single or range)
+            const selectedBlokCodes = getSelectedBlokCodes(manualBlokFrom, manualBlokTo);
+            
+            if (selectedBlokCodes.length === 0) {
+                showNotification('Tidak ada blok yang valid dipilih', 'error');
+                setIsLoading(false);
+                return;
+            }
+            
+            // For now, use the first blok as primary, but store all bloks in the command
+            const primaryBlokCode = selectedBlokCodes[0];
+            const selectedBlok = bloksToUse.find(b => 
+                (b.code || b.id?.toString()) === primaryBlokCode
+            );
+            
+            const blokDbId = selectedBlok?.id || (isNaN(primaryBlokCode) ? null : parseInt(primaryBlokCode));
             const timestamp = Date.now();
             
-            // Send start command to Firebase
+            // Format blok range display
+            const blokRangeDisplay = selectedBlokCodes.length > 1 
+                ? `${manualBlokFrom}-${manualBlokTo}` 
+                : primaryBlokCode;
+            
+            // Send start command to Firebase with blok range
             await set(ref(database, 'robot/commands/start'), {
                 mission_type: manualMissionType,
-                blok_id: blokCode,
-                blok_db_id: manualBlokId,
+                blok_id: primaryBlokCode, // Primary blok code
+                blok_ids: selectedBlokCodes, // Array of all blok codes in range
+                blok_range: blokRangeDisplay, // Display format (e.g., "A1-B2")
+                blok_db_id: blokDbId, // MySQL blok ID (if available)
                 command: 'start',
                 mode: 'manual',
                 timestamp: timestamp,
@@ -358,8 +430,10 @@ export default function RobotControl({
             // Update active_mission in Firebase directly (since ESP32 is not available yet)
             await set(ref(database, 'robot/active_mission'), {
                 mission_type: manualMissionType,
-                blok_id: blokCode,
-                blok_db_id: manualBlokId,
+                blok_id: primaryBlokCode, // Primary blok code
+                blok_ids: selectedBlokCodes, // Array of all blok codes
+                blok_range: blokRangeDisplay, // Display format
+                blok_db_id: blokDbId, // MySQL blok ID (if available)
                 status: 'in_progress',
                 progress_percentage: 0,
                 started_at: timestamp,
@@ -370,10 +444,15 @@ export default function RobotControl({
                 schedule_id: null, // Manual missions don't have schedule_id
             });
             
-            showNotification(`Robot diaktifkan untuk ${getMissionTypeLabel(manualMissionType)} di ${selectedBlok?.code || blokCode}`, 'success');
+            const blokCount = selectedBlokCodes.length > 1 
+                ? `${selectedBlokCodes.length} blok (${blokRangeDisplay})`
+                : primaryBlokCode;
+            
+            showNotification(`Robot diaktifkan untuk ${getMissionTypeLabel(manualMissionType)} di ${blokCount}`, 'success');
             
             // Reset form
-            setManualBlokId('');
+            setManualBlokFrom('');
+            setManualBlokTo('');
             setShowManualControl(false);
             
         } catch (error) {
@@ -384,20 +463,30 @@ export default function RobotControl({
         }
     };
 
-    // Delete history schedule or manual mission
-    const handleDeleteHistory = async (missionId, isManual = false) => {
+    // Open delete confirmation modal
+    const handleDeleteHistoryClick = (mission, isManual = false) => {
         if (!isKPetani) return;
+        setMissionToDelete({ ...mission, isManual });
+        setShowDeleteModal(true);
+    };
 
-        if (!confirm('Yakin ingin menghapus riwayat misi ini?')) return;
+    // Delete history schedule or manual mission
+    const handleDeleteHistory = async () => {
+        if (!missionToDelete) return;
 
         try {
-            if (isManual) {
+            if (missionToDelete.isManual) {
                 // Delete from Firebase completed_missions
-                await set(ref(database, `robot/completed_missions/${missionId}`), null);
+                await set(ref(database, `robot/completed_missions/${missionToDelete.id}`), null);
                 showNotification('Riwayat misi manual berhasil dihapus', 'success');
+                
+                // Remove from local state
+                setCompletedManualMissions(prev => 
+                    prev.filter(m => m.id !== missionToDelete.id)
+                );
             } else {
                 // Delete scheduled mission from API
-                const response = await fetch(`/api/robot/schedules/${missionId}`, {
+                const response = await fetch(`/api/robot/schedules/${missionToDelete.id}`, {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',
@@ -416,7 +505,7 @@ export default function RobotControl({
                     // Remove from local state immediately
                     setSchedules(prevSchedules =>
                         prevSchedules.filter(s => 
-                            s.id !== parseInt(missionId) && s.id !== missionId
+                            s.id !== parseInt(missionToDelete.id) && s.id !== missionToDelete.id
                         )
                     );
 
@@ -426,11 +515,80 @@ export default function RobotControl({
                     showNotification(data.message || 'Gagal menghapus riwayat misi', 'error');
                 }
             }
+            
+            // Close modal and reset
+            setShowDeleteModal(false);
+            setMissionToDelete(null);
         } catch (error) {
             console.error('Error deleting history:', error);
             showNotification('Terjadi kesalahan saat menghapus riwayat misi', 'error');
+            setShowDeleteModal(false);
+            setMissionToDelete(null);
         }
     };
+    
+    // Discover bloks from Firebase first (same as Dashboard and MonitoringSensor)
+    useEffect(() => {
+        console.log('[RobotControl] Discovering bloks from Firebase...');
+        
+        const kebunIds = [1]; // Can be extended to check multiple kebuns
+        const discoveredBloksMap = new Map(); // Use Map to avoid duplicates
+        
+        kebunIds.forEach(kebunId => {
+            const bloksRef = ref(database, `kebuns/kebun_${kebunId}/bloks`);
+            
+            const discoveryCallback = (snapshot) => {
+                const bloksData = snapshot.val();
+                console.log(`[RobotControl] Discovered bloks from kebun_${kebunId}:`, bloksData);
+                
+                if (bloksData && typeof bloksData === 'object') {
+                    Object.keys(bloksData).forEach(blokCode => {
+                        // Accept ALL bloks that exist in Firebase structure
+                        const blokData = bloksData[blokCode];
+                        if (blokData !== null && blokData !== undefined) {
+                            const key = `${kebunId}_${blokCode}`;
+                            if (!discoveredBloksMap.has(key)) {
+                                discoveredBloksMap.set(key, {
+                                    id: blokCode, // Use code as ID for Firebase-discovered bloks
+                                    code: blokCode,
+                                    kebun_id: kebunId,
+                                    name: blokData.name || blokCode // Default name
+                                });
+                                console.log(`[RobotControl] Added blok ${blokCode} from kebun_${kebunId} to discovered list`);
+                            }
+                        }
+                    });
+                    
+                    // Convert Map to Array
+                    const discoveredBloks = Array.from(discoveredBloksMap.values());
+                    
+                    // Update state with discovered bloks
+                    setFirebaseBloks(discoveredBloks);
+                    
+                    console.log('[RobotControl] Discovered bloks:', discoveredBloks);
+                }
+            };
+            
+            onValue(bloksRef, discoveryCallback, (error) => {
+                if (error) {
+                    console.error(`[RobotControl] Error discovering bloks from kebun_${kebunId}:`, error);
+                } else {
+                    console.log(`[RobotControl] Discovery listener connected for kebun_${kebunId}`);
+                }
+            });
+            
+            firebaseListenersRef.current.push({ ref: bloksRef, callback: discoveryCallback, isDiscoveryListener: true });
+        });
+        
+        // Cleanup function
+        return () => {
+            const discoveryListeners = firebaseListenersRef.current.filter(l => l.isDiscoveryListener);
+            discoveryListeners.forEach(listener => {
+                off(listener.ref, 'value', listener.callback);
+            });
+            firebaseListenersRef.current = firebaseListenersRef.current.filter(l => !l.isDiscoveryListener);
+        };
+    }, []);
     
     // Firebase listeners
     useEffect(() => {
@@ -440,11 +598,14 @@ export default function RobotControl({
             const data = snapshot.val();
             if (data) {
                 setRobotStatus({
-                    current_state: data.current_state || 'offline',
-                    battery_level: data.battery_level || 0,
-                    current_location: data.current_location || data.location || null,
-                    last_update: data.last_update || null,
+                    current_state: data.current_state || initialRobotStatus?.current_state || 'offline',
+                    battery_level: data.battery_level || initialRobotStatus?.battery_level || 0,
+                    current_location: data.current_location || data.location || initialRobotStatus?.current_location || null,
+                    last_update: data.last_update || initialRobotStatus?.last_update || null,
                 });
+            } else {
+                // Fallback to initialRobotStatus if Firebase data is null
+                setRobotStatus(initialRobotStatus);
             }
         });
         
@@ -534,7 +695,12 @@ export default function RobotControl({
                     });
                 }
             } else {
-                setActiveMission(null);
+                // Fallback to initialActiveMission if Firebase data is empty
+                if (initialActiveMission && Object.keys(initialActiveMission).length > 0) {
+                    setActiveMission(initialActiveMission);
+                } else {
+                    setActiveMission(null);
+                }
             }
         });
         
@@ -599,11 +765,34 @@ export default function RobotControl({
                     return updatedSchedules.filter(s => s.status !== 'cancelled');
                 });
             } else {
-                // If Firebase data is empty/null, refresh from API to get latest status
-                // But filter out cancelled schedules
-                fetchSchedules().then(() => {
-                    setSchedules(prev => prev.filter(s => s.status !== 'cancelled'));
-                });
+                // If Firebase data is empty/null, fallback to recentSchedules (props from MySQL)
+                if (recentSchedules && recentSchedules.length > 0) {
+                    // Filter out cancelled schedules
+                    const filteredSchedules = recentSchedules
+                        .filter(schedule => schedule.status !== 'cancelled')
+                        .map(schedule => ({
+                            id: schedule.id,
+                            blok_id: schedule.blok_id,
+                            blok_code: schedule.blok?.code || null,
+                            blok_name: schedule.blok?.name || null,
+                            mission_type: schedule.mission_type,
+                            description: schedule.description,
+                            scheduled_at: schedule.scheduled_at,
+                            started_at: schedule.started_at,
+                            completed_at: schedule.completed_at,
+                            status: schedule.status,
+                            priority: schedule.priority,
+                            progress_percentage: schedule.progress_percentage || 0,
+                            mission_details: schedule.mission_details,
+                            created_by: schedule.creator?.name || null,
+                        }));
+                    setSchedules(filteredSchedules);
+                } else {
+                    // If no recentSchedules, refresh from API
+                    fetchSchedules().then(() => {
+                        setSchedules(prev => prev.filter(s => s.status !== 'cancelled'));
+                    });
+                }
             }
         });
         
@@ -843,10 +1032,49 @@ export default function RobotControl({
                 progress_percentage: parsedProgress !== null 
                     ? parsedProgress 
                     : (firebaseData.progress_percentage ?? s.progress_percentage),
+                isManual: false, // Scheduled missions
             };
         }
-        return s;
+        return { ...s, isManual: false };
     });
+    
+    // Add active manual mission to pending schedules if it exists
+    const activeManualMission = activeMission && !activeMission.schedule_id && activeMission.mission_type ? (() => {
+        const statusStr = activeMission.status;
+        const { status: parsedStatus, progress: parsedProgress } = parseStatusAndProgress(statusStr);
+        const finalStatus = parsedStatus || statusStr || 'in_progress';
+        
+        // Only include if not completed
+        if (finalStatus === 'completed' || finalStatus === 'done') return null;
+        
+        // Format blok display
+        const blokDisplay = activeMission.blok_range || activeMission.blok_id || 'Tidak diketahui';
+        
+        return {
+            id: `manual_${activeMission.started_at || Date.now()}`,
+            blok_id: activeMission.blok_id || null,
+            blok_code: activeMission.blok_range || activeMission.blok_id || null,
+            blok_name: null,
+            mission_type: activeMission.mission_type,
+            description: `Misi manual - ${blokDisplay}`,
+            scheduled_at: activeMission.started_at ? new Date(activeMission.started_at).toISOString() : new Date().toISOString(),
+            started_at: activeMission.started_at ? new Date(activeMission.started_at).toISOString() : null,
+            completed_at: null,
+            status: finalStatus,
+            priority: 'high', // Manual missions are high priority
+            progress_percentage: parsedProgress !== null 
+                ? parsedProgress 
+                : (activeMission.progress_percentage || 0),
+            mission_details: {},
+            created_by: null,
+            isManual: true, // Mark as manual mission
+        };
+    })() : null;
+    
+    // Combine pending schedules with active manual mission
+    const allPendingSchedules = activeManualMission 
+        ? [...pendingSchedules, activeManualMission]
+        : pendingSchedules;
     
     // Get completed schedules
     const completedSchedules = schedules.filter(s => {
@@ -905,23 +1133,121 @@ export default function RobotControl({
         return bTime - aTime;
     });
     
+    // Get bloks to use (prioritize firebaseBloks if available and more complete)
+    const getBloksToUse = () => {
+        // Prioritize firebaseBloks if it has more bloks than MySQL bloks
+        if (firebaseBloks && firebaseBloks.length > 0 && firebaseBloks.length >= bloks.length) {
+            return firebaseBloks;
+        }
+        // Fallback to MySQL bloks
+        return bloks && bloks.length > 0 ? bloks : [];
+    };
+    
+    const bloksToUse = getBloksToUse();
+    
+    // Helper function to parse blok code (e.g., "A1" -> {letter: "A", number: 1})
+    const parseBlokCode = (code) => {
+        if (!code) return null;
+        const match = code.toString().match(/^([A-Z]+)(\d+)$/i);
+        if (!match) return null;
+        return {
+            letter: match[1].toUpperCase(),
+            number: parseInt(match[2], 10)
+        };
+    };
+    
+    // Helper function to generate blok code from letter and number
+    const generateBlokCode = (letter, number) => {
+        return `${letter}${number}`;
+    };
+    
+    // Helper function to expand blok range (e.g., "A1-B2" -> ["A1", "A2", "B1", "B2"])
+    const expandBlokRange = (fromCode, toCode) => {
+        if (!fromCode || !toCode) return [];
+        
+        const from = parseBlokCode(fromCode);
+        const to = parseBlokCode(toCode);
+        
+        if (!from || !to) return [];
+        
+        const result = [];
+        const fromLetterCode = from.letter.charCodeAt(0);
+        const toLetterCode = to.letter.charCodeAt(0);
+        
+        // Generate all bloks in range
+        for (let letterCode = fromLetterCode; letterCode <= toLetterCode; letterCode++) {
+            const letter = String.fromCharCode(letterCode);
+            // Determine start and end numbers for this letter
+            const startNum = (letterCode === fromLetterCode) ? from.number : 1;
+            const endNum = (letterCode === toLetterCode) ? to.number : 99; // Assume max 99 per letter
+            
+            for (let num = startNum; num <= endNum; num++) {
+                const code = generateBlokCode(letter, num);
+                // Check if this blok exists in bloksToUse
+                const exists = bloksToUse.some(b => {
+                    const bCode = (b.code || b.id?.toString()).toString();
+                    return bCode === code || bCode.toUpperCase() === code.toUpperCase();
+                });
+                if (exists) {
+                    result.push(code);
+                }
+            }
+        }
+        
+        return result;
+    };
+    
+    // Get selected blok codes (single or range)
+    const getSelectedBlokCodes = (fromCode, toCode) => {
+        if (!fromCode) return [];
+        if (!toCode || fromCode === toCode) {
+            // Single blok
+            return [fromCode];
+        }
+        // Range
+        return expandBlokRange(fromCode, toCode);
+    };
+    
     return (
         <AuthenticatedLayout>
             <Head title="Kontrol Robot" />
+            
+            <DeleteMissionModal
+                show={showDeleteModal}
+                mission={missionToDelete}
+                onClose={() => {
+                    setShowDeleteModal(false);
+                    setMissionToDelete(null);
+                }}
+                onConfirm={handleDeleteHistory}
+            />
             
             <div className="min-h-screen relative overflow-hidden">
                 {/* Animated Background - Same as Dashboard */}
                 <AnimatedBackground />
                 
                 <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                    {/* Back Button */}
+                    <div className="mb-4">
+                        <BackButton href="/dashboard" />
+                    </div>
+                    
                     {/* Notification Toast */}
                     <AnimatePresence>
                         {notification && (
                             <motion.div
                                 initial={{ opacity: 0, y: -20, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                animate={{ 
+                                    opacity: 1, 
+                                    y: 0, 
+                                    scale: 1,
+                                    top: `${topOffset}px`,
+                                }}
                                 exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                                className="fixed top-4 right-4 z-50"
+                                style={{
+                                    top: `${topOffset}px`,
+                                }}
+                                className="fixed right-4 z-50"
                             >
                                 <Card className={`p-4 shadow-2xl ${
                                     notification.type === 'success' 
@@ -1409,21 +1735,47 @@ export default function RobotControl({
                                         </div>
 
                                         <div>
-                                            <Label htmlFor="manual-blok" className="text-sm font-medium mb-2 block">Blok Kebun</Label>
-                                            <select 
-                                                id="manual-blok"
-                                                value={manualBlokId}
-                                                onChange={(e) => setManualBlokId(e.target.value)}
-                                                className="w-full p-3 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all" 
-                                                required
-                                            >
-                                                <option value="">Pilih Blok</option>
-                                                {bloks.map((blok) => (
-                                                    <option key={blok.id} value={blok.id}>
-                                                        {blok.code} - {blok.name}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                            <Label className="text-sm font-medium mb-2 block">Blok Kebun (Range)</Label>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <Label htmlFor="manual-blok-from" className="text-xs text-gray-600 mb-1 block">Dari Blok</Label>
+                                                    <select 
+                                                        id="manual-blok-from"
+                                                        value={manualBlokFrom}
+                                                        onChange={(e) => setManualBlokFrom(e.target.value)}
+                                                        className="w-full p-3 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all" 
+                                                        required
+                                                    >
+                                                        <option value="">Pilih Blok</option>
+                                                        {bloksToUse.map((blok) => (
+                                                            <option key={blok.id || blok.code} value={blok.code || blok.id}>
+                                                                {blok.code} - {blok.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="manual-blok-to" className="text-xs text-gray-600 mb-1 block">Sampai Blok</Label>
+                                                    <select 
+                                                        id="manual-blok-to"
+                                                        value={manualBlokTo}
+                                                        onChange={(e) => setManualBlokTo(e.target.value)}
+                                                        className="w-full p-3 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all" 
+                                                    >
+                                                        <option value="">Pilih Blok (Opsional)</option>
+                                                        {bloksToUse.map((blok) => (
+                                                            <option key={blok.id || blok.code} value={blok.code || blok.id}>
+                                                                {blok.code} - {blok.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            {manualBlokFrom && manualBlokTo && manualBlokFrom !== manualBlokTo && (
+                                                <p className="text-xs text-purple-600 mt-2 font-medium">
+                                                    Range: {manualBlokFrom} - {manualBlokTo} ({getSelectedBlokCodes(manualBlokFrom, manualBlokTo).length} blok)
+                                                </p>
+                                            )}
                                         </div>
 
                                         <div className="flex gap-3">
@@ -1439,7 +1791,7 @@ export default function RobotControl({
                                                 type="button"
                                                 onClick={handleStartRobotManually}
                                                 className="flex-1 h-11 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
-                                                disabled={isLoading || !manualBlokId || robotStatus.current_state === 'offline'}
+                                                disabled={isLoading || !manualBlokFrom || robotStatus.current_state === 'offline'}
                                             >
                                                 {isLoading ? (
                                                     <>
@@ -1541,28 +1893,52 @@ export default function RobotControl({
                                                 </div>
                                             </div>
 
-                                            {/* Blok Kebun */}
+                                            {/* Blok Kebun (Range) */}
                                             <div>
-                                                <Label htmlFor="blok" className="text-sm font-semibold mb-3 block text-gray-700 flex items-center gap-2">
+                                                <Label className="text-sm font-semibold mb-3 block text-gray-700 flex items-center gap-2">
                                                     <MapPin className="w-4 h-4 text-green-600" />
-                                                    Blok Kebun
+                                                    Blok Kebun (Range)
                                                 </Label>
-                                                <div className="relative">
-                                                    <select 
-                                                        id="blok"
-                                                        value={selectedBlokId}
-                                                        onChange={(e) => setSelectedBlokId(e.target.value)}
-                                                        className="w-full p-4 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md" 
-                                                        required
-                                                    >
-                                                        <option value="">Pilih Blok Kebun</option>
-                                                        {bloks.map((blok) => (
-                                                            <option key={blok.id} value={blok.id}>
-                                                                {blok.code} - {blok.name}
-                                                            </option>
-                                                        ))}
-                                                    </select>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <Label htmlFor="blok-from" className="text-xs text-gray-600 mb-1 block">Dari Blok</Label>
+                                                        <select 
+                                                            id="blok-from"
+                                                            value={selectedBlokFrom}
+                                                            onChange={(e) => setSelectedBlokFrom(e.target.value)}
+                                                            className="w-full p-4 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md" 
+                                                            required
+                                                        >
+                                                            <option value="">Pilih Blok</option>
+                                                            {bloksToUse.map((blok) => (
+                                                                <option key={blok.id || blok.code} value={blok.code || blok.id}>
+                                                                    {blok.code} - {blok.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div>
+                                                        <Label htmlFor="blok-to" className="text-xs text-gray-600 mb-1 block">Sampai Blok</Label>
+                                                        <select 
+                                                            id="blok-to"
+                                                            value={selectedBlokTo}
+                                                            onChange={(e) => setSelectedBlokTo(e.target.value)}
+                                                            className="w-full p-4 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md" 
+                                                        >
+                                                            <option value="">Pilih Blok (Opsional)</option>
+                                                            {bloksToUse.map((blok) => (
+                                                                <option key={blok.id || blok.code} value={blok.code || blok.id}>
+                                                                    {blok.code} - {blok.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
                                                 </div>
+                                                {selectedBlokFrom && selectedBlokTo && selectedBlokFrom !== selectedBlokTo && (
+                                                    <p className="text-xs text-green-600 mt-2 font-medium">
+                                                        Range: {selectedBlokFrom} - {selectedBlokTo} ({getSelectedBlokCodes(selectedBlokFrom, selectedBlokTo).length} blok)
+                                                    </p>
+                                                )}
                                             </div>
 
                                             {/* Tanggal & Waktu */}
@@ -1693,10 +2069,10 @@ export default function RobotControl({
                                 </Button>
                             </div>
                             <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
-                                {pendingSchedules.length === 0 ? (
+                                {allPendingSchedules.length === 0 ? (
                                     <p className="text-sm text-gray-500 text-center py-8">Tidak ada jadwal aktif</p>
                                 ) : (
-                                    pendingSchedules.map((misi, index) => (
+                                    allPendingSchedules.map((misi, index) => (
                                         <motion.div
                                             key={misi.id}
                                             initial={{ opacity: 0, y: 20 }}
@@ -1712,19 +2088,24 @@ export default function RobotControl({
                                             }`}
                                         >
                                             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="text-sm font-bold text-gray-800">
                                                         {misi.blok_code || `Blok #${misi.blok_id}`}
                                                     </span>
                                                     {misi.blok_name && (
                                                         <span className="text-xs text-gray-500">- {misi.blok_name}</span>
                                                     )}
+                                                    {misi.isManual && (
+                                                        <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold">
+                                                            Manual
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <span className={`text-xs px-3 py-1.5 rounded-full font-bold shadow-md ${getStatusColor(misi.status)}`}>
                                                         {getStatusLabel(misi.status)}
                                                     </span>
-                                                    {isKPetani && (misi.status === 'pending' || misi.status === 'in_progress' || misi.status === 'paused') && (
+                                                    {isKPetani && (misi.status === 'pending' || misi.status === 'in_progress' || misi.status === 'paused') && !misi.isManual && (
                                                         <button
                                                             onClick={() => handleCancelSchedule(misi.id)}
                                                             className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
@@ -1849,7 +2230,7 @@ export default function RobotControl({
                                                     </span>
                                                     {isKPetani && (
                                                         <button
-                                                            onClick={() => handleDeleteHistory(misi.id, misi.isManual)}
+                                                            onClick={() => handleDeleteHistoryClick(misi, misi.isManual)}
                                                             className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
                                                             title="Hapus riwayat misi"
                                                         >

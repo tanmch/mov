@@ -25,6 +25,9 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     
+    // Profile API routes
+    Route::post('/api/profile/toggle-sensor-simulation', [\App\Http\Controllers\Api\ProfileController::class, 'toggleSensorSimulation'])->name('profile.toggle-sensor-simulation');
+    
     // Read-only routes (all authenticated users can view)
     Route::get('/sensor', [\App\Http\Controllers\SensorController::class, 'index'])->name('sensor');
     
@@ -41,9 +44,7 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('LaporanEkspor');
     })->name('laporan');
     
-    Route::get('/kebun', function () {
-        return Inertia::render('KebunMonitoring');
-    })->name('kebun');
+    Route::get('/kebun', [\App\Http\Controllers\KebunController::class, 'index'])->name('kebun');
     
     Route::get('/penyiraman', function () {
         return Inertia::render('Penyiraman');
@@ -57,6 +58,10 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('ArtikelEdukasi');
     })->name('artikel');
     
+    Route::get('/customer-service', function () {
+        return Inertia::render('CustomerService');
+    })->name('customer-service');
+    
     // Robot routes (all authenticated users can view)
     Route::prefix('api/robot')->group(function () {
         Route::get('/schedules', [\App\Http\Controllers\Api\RobotController::class, 'schedules'])->name('robot.schedules');
@@ -67,16 +72,18 @@ Route::middleware('auth')->group(function () {
     // K-Petani only routes (CRUD operations)
     Route::middleware('role:k-petani')->group(function () {
         // Kebun Management (CRUD)
-        // Routes akan ditambahkan ketika KebunController dibuat
-        // Route::post('/kebun', [KebunController::class, 'store'])->name('kebun.store');
-        // Route::put('/kebun/{id}', [KebunController::class, 'update'])->name('kebun.update');
-        // Route::delete('/kebun/{id}', [KebunController::class, 'destroy'])->name('kebun.destroy');
+        Route::get('/kebun/create', [\App\Http\Controllers\KebunController::class, 'create'])->name('kebun.create');
+        Route::post('/kebun', [\App\Http\Controllers\KebunController::class, 'store'])->name('kebun.store');
+        Route::get('/kebun/{kebun}/edit', [\App\Http\Controllers\KebunController::class, 'edit'])->name('kebun.edit');
+        Route::put('/kebun/{kebun}', [\App\Http\Controllers\KebunController::class, 'update'])->name('kebun.update');
+        Route::delete('/kebun/{kebun}', [\App\Http\Controllers\KebunController::class, 'destroy'])->name('kebun.destroy');
         
         // Blok Management (CRUD)
-        // Routes akan ditambahkan ketika BlokController dibuat
-        // Route::post('/blok', [BlokController::class, 'store'])->name('blok.store');
-        // Route::put('/blok/{id}', [BlokController::class, 'update'])->name('blok.update');
-        // Route::delete('/blok/{id}', [BlokController::class, 'destroy'])->name('blok.destroy');
+        Route::get('/blok/create', [\App\Http\Controllers\BlokController::class, 'create'])->name('blok.create');
+        Route::post('/blok', [\App\Http\Controllers\BlokController::class, 'store'])->name('blok.store');
+        Route::get('/blok/{blok}/edit', [\App\Http\Controllers\BlokController::class, 'edit'])->name('blok.edit');
+        Route::put('/blok/{blok}', [\App\Http\Controllers\BlokController::class, 'update'])->name('blok.update');
+        Route::delete('/blok/{blok}', [\App\Http\Controllers\BlokController::class, 'destroy'])->name('blok.destroy');
         
         // User Management (CRUD)
         Route::get('/users', [\App\Http\Controllers\UserController::class, 'index'])->name('users.index');

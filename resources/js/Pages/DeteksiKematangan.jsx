@@ -1,17 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, usePage } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Badge } from '@/Components/ui/badge';
-import { Camera, Upload, Trash2, CheckCircle, Clock, Sparkles } from 'lucide-react';
+import { Camera, Upload, Trash2, CheckCircle, Clock, Sparkles, Loader, RefreshCw } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
+import SkeletonLoader, { SkeletonList } from '@/Components/ui/SkeletonLoader';
+import EmptyState from '@/Components/ui/EmptyState';
+import LoadingOverlay from '@/Components/ui/LoadingOverlay';
+import BackButton from '@/Components/BackButton';
 
 export default function DeteksiKematangan() {
     const { auth } = usePage().props;
     const userRole = auth?.user?.role;
     const [isDetecting, setIsDetecting] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isDragging, setIsDragging] = useState(false);
     const [detectionHistory, setDetectionHistory] = useState([
         {
             id: 1,
@@ -39,6 +45,13 @@ export default function DeteksiKematangan() {
         },
     ]);
 
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setIsLoading(false);
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, []);
+
     const handleUploadImage = () => {
         setIsDetecting(true);
         setTimeout(() => {
@@ -53,6 +66,21 @@ export default function DeteksiKematangan() {
             setDetectionHistory([newDetection, ...detectionHistory]);
             setIsDetecting(false);
         }, 2000);
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = () => {
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        handleUploadImage();
     };
 
     const handleDeleteDetection = (id) => {
@@ -79,22 +107,44 @@ export default function DeteksiKematangan() {
             
             <div className="min-h-screen relative overflow-hidden">
                 <AnimatedBackground />
+                <LoadingOverlay show={isDetecting} message="Menganalisis kematangan dengan AI..." />
                 <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                    {/* Back Button */}
+                    <div className="mb-4">
+                        <BackButton href="/dashboard" />
+                    </div>
+                    
                     {/* Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-3 mb-6"
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6"
                     >
-                        <div className="w-10 h-10 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <Camera className="w-6 h-6 text-white" />
+                        <div className="flex items-center gap-3">
+                            <motion.div
+                                animate={{ rotate: [0, 5, -5, 0] }}
+                                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                                className="w-12 h-12 bg-gradient-to-br from-yellow-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg"
+                            >
+                                <Camera className="w-6 h-6 text-white" />
+                            </motion.div>
+                            <div>
+                                <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-yellow-600 to-orange-600 bg-clip-text text-transparent">
+                                    Deteksi Kematangan 🥭
+                                </h1>
+                                <p className="text-sm text-gray-600">Upload gambar buah untuk analisis AI</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-yellow-600 to-orange-600 bg-clip-text text-transparent">
-                                Deteksi Kematangan 🥭
-                            </h1>
-                            <p className="text-sm text-gray-600">Upload gambar buah untuk analisis AI</p>
-                        </div>
+                        <Button
+                            onClick={() => setIsLoading(true)}
+                            variant="outline"
+                            size="sm"
+                            disabled={isLoading}
+                            className="flex items-center gap-2"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                            Refresh
+                        </Button>
                     </motion.div>
 
                     {/* Upload Section */}
@@ -103,7 +153,16 @@ export default function DeteksiKematangan() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
                     >
-                        <Card className="p-6 md:p-8 bg-gradient-to-br from-yellow-50 via-orange-50 to-amber-50 border-2 border-dashed border-yellow-400 shadow-xl">
+                        <Card 
+                            className={`p-6 md:p-8 bg-gradient-to-br from-yellow-50 via-orange-50 to-amber-50 border-2 border-dashed shadow-xl transition-all ${
+                                isDragging 
+                                    ? 'border-yellow-500 bg-gradient-to-br from-yellow-100 via-orange-100 to-amber-100 scale-105' 
+                                    : 'border-yellow-400'
+                            }`}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                        >
                             <div className="text-center">
                                 <motion.div
                                     animate={{ 
@@ -207,7 +266,9 @@ export default function DeteksiKematangan() {
                                 </Badge>
                             </div>
 
-                            {detectionHistory.length > 0 ? (
+                            {isLoading ? (
+                                <SkeletonLoader type="list" count={3} />
+                            ) : detectionHistory.length > 0 ? (
                                 <div className="space-y-4">
                                     <AnimatePresence>
                                         {detectionHistory.map((result, index) => (
@@ -276,11 +337,13 @@ export default function DeteksiKematangan() {
                                     </AnimatePresence>
                                 </div>
                             ) : (
-                                <div className="text-center py-12">
-                                    <Camera className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                                    <p className="text-gray-500">Belum ada hasil deteksi</p>
-                                    <p className="text-sm text-gray-400 mt-1">Upload gambar untuk memulai deteksi</p>
-                                </div>
+                                <EmptyState
+                                    icon={Camera}
+                                    title="Belum Ada Hasil Deteksi"
+                                    message="Upload gambar mangga untuk memulai analisis kematangan dengan AI."
+                                    actionLabel="Upload Gambar"
+                                    onAction={handleUploadImage}
+                                />
                             )}
                         </Card>
                     </motion.div>
