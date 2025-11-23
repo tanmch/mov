@@ -120,36 +120,184 @@ export default function CustomerService() {
 
     const currentFAQ = isKPetani ? faqKPetani : faqPetani;
 
-    const handleSendMessage = () => {
+    // Auto-answer bot function
+    const findAnswerByKeyword = (userMessage) => {
+        const messageLower = userMessage.toLowerCase();
+        
+        // Keyword mapping untuk auto-answer
+        const keywordMap = {
+            // Deteksi AI
+            'deteksi': ['deteksi', 'ai', 'kematangan', 'foto', 'gambar', 'scan', 'analisis'],
+            'cara deteksi': ['cara deteksi', 'bagaimana deteksi', 'panduan deteksi'],
+            
+            // Sensor IoT
+            'sensor': ['sensor', 'iot', 'perangkat', 'device', 'alat'],
+            'setup sensor': ['setup sensor', 'pasang sensor', 'instal sensor', 'setting sensor'],
+            'sensor tidak update': ['sensor tidak update', 'data tidak muncul', 'sensor error', 'sensor bermasalah'],
+            
+            // Robot Control
+            'robot': ['robot', 'movibot', 'bot', 'kontrol robot'],
+            'kontrol robot': ['kontrol robot', 'jalankan robot', 'start robot', 'stop robot'],
+            'jadwal robot': ['jadwal robot', 'scheduling', 'misi robot'],
+            
+            // Penyiraman
+            'penyiraman': ['penyiraman', 'siram', 'air', 'irigasi'],
+            'jadwal penyiraman': ['jadwal penyiraman', 'penyiraman otomatis', 'auto penyiraman'],
+            
+            // Akun & Pembayaran
+            'harga': ['harga', 'biaya', 'bayar', 'langganan', 'paket', 'subscription'],
+            'akun': ['akun', 'account', 'profil', 'profile', 'ubah password', 'ganti password'],
+            
+            // Prediksi & Laporan
+            'prediksi': ['prediksi', 'panen', 'kapan panen', 'estimasi'],
+            'laporan': ['laporan', 'report', 'export', 'download'],
+            
+            // Mitra & Ekspor
+            'mitra': ['mitra', 'eksportir', 'ekspor', 'jual', 'distributor'],
+            
+            // Troubleshooting
+            'error': ['error', 'gagal', 'tidak bisa', 'masalah', 'bug', 'bermasalah'],
+            'lupa password': ['lupa password', 'reset password', 'forgot password'],
+        };
+
+        // Check each FAQ for keyword match
+        for (const faq of currentFAQ) {
+            const questionLower = faq.question.toLowerCase();
+            const answerLower = faq.answer.toLowerCase();
+            
+            // Check if user message contains keywords from question or answer
+            for (const [key, keywords] of Object.entries(keywordMap)) {
+                const hasKeyword = keywords.some(keyword => 
+                    messageLower.includes(keyword) || 
+                    questionLower.includes(keyword) ||
+                    answerLower.includes(keyword)
+                );
+                
+                if (hasKeyword) {
+                    // Check if this FAQ matches the keyword
+                    const faqMatches = keywords.some(keyword => 
+                        questionLower.includes(keyword) || 
+                        answerLower.includes(keyword)
+                    );
+                    
+                    if (faqMatches) {
+                        return {
+                            found: true,
+                            answer: faq.answer,
+                            question: faq.question,
+                        };
+                    }
+                }
+            }
+            
+            // Direct question match (fuzzy)
+            const questionWords = questionLower.split(/\s+/);
+            const messageWords = messageLower.split(/\s+/);
+            const matchingWords = questionWords.filter(word => 
+                word.length > 3 && messageWords.includes(word)
+            );
+            
+            if (matchingWords.length >= 2) {
+                return {
+                    found: true,
+                    answer: faq.answer,
+                    question: faq.question,
+                };
+            }
+        }
+
+        return { found: false };
+    };
+
+    const handleSendMessage = (e) => {
+        // Prevent form submission if called from form
+        if (e && e.preventDefault) {
+            e.preventDefault();
+        }
+        
         if (!message.trim()) return;
 
+        const userMessage = message.trim();
+        const messageLower = userMessage.toLowerCase();
+        
+        // Check for "Chat dengan CS" keyword - langsung transfer ke CS
+        const chatWithCSKeywords = ['chat dengan cs', 'chat cs', 'hubungi cs', 'cs langsung', 'customer service', 'bicara dengan cs'];
+        const wantsDirectCS = chatWithCSKeywords.some(keyword => messageLower.includes(keyword));
+        
         const newMessage = {
             id: chatMessages.length + 1,
             from: 'user',
-            text: message,
+            text: userMessage,
             time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
         };
 
         setChatMessages([...chatMessages, newMessage]);
         setMessage('');
         setIsTyping(true);
+        
+        // Keep focus on input and prevent page scroll
+        setTimeout(() => {
+            const input = document.getElementById('chat-input');
+            if (input) {
+                input.focus();
+            }
+        }, 100);
 
-        // Simulate bot response
+        // Try to find auto-answer
         setTimeout(() => {
             setIsTyping(false);
-            const botResponse = {
-                id: chatMessages.length + 2,
-                from: 'bot',
-                text: 'Terima kasih atas pertanyaan Anda. Tim MOV Center akan segera merespons. Untuk bantuan lebih cepat, hubungi: ' + contactInfo.whatsapp,
-                time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            };
+            
+            let botResponse;
+            
+            // If user wants direct CS, skip auto-answer and go straight to CS
+            if (wantsDirectCS) {
+                botResponse = {
+                    id: chatMessages.length + 2,
+                    from: 'cs',
+                    text: `Terima kasih! Tim Customer Service MOV Center siap membantu Anda.\n\n📞 Hubungi kami:\n• WhatsApp: ${contactInfo.whatsapp}\n• Email: ${contactInfo.email}\n• Telepon: ${contactInfo.phone}\n\n⏰ Jam Operasional: ${contactInfo.operationalHours}\n\n💬 Kami akan merespons secepat mungkin!`,
+                    time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                    isAutoAnswer: false,
+                };
+            } else {
+                const autoAnswer = findAnswerByKeyword(userMessage);
+                
+                if (autoAnswer.found) {
+                    // Auto-answer found
+                    botResponse = {
+                        id: chatMessages.length + 2,
+                        from: 'bot',
+                        text: autoAnswer.answer + '\n\n💡 Apakah jawaban ini membantu? Jika masih ada pertanyaan, ketik "Chat dengan CS" untuk berbicara langsung dengan tim CS kami!',
+                        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                        isAutoAnswer: true,
+                    };
+                } else {
+                    // No auto-answer found - transfer to real CS
+                    botResponse = {
+                        id: chatMessages.length + 2,
+                        from: 'cs',
+                        text: `Terima kasih atas pertanyaan Anda. Tim Customer Service MOV Center akan segera merespons pertanyaan Anda.\n\n📞 Untuk bantuan lebih cepat, hubungi kami:\n• WhatsApp: ${contactInfo.whatsapp}\n• Email: ${contactInfo.email}\n• Telepon: ${contactInfo.phone}\n\n⏰ Jam Operasional: ${contactInfo.operationalHours}`,
+                        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                        isAutoAnswer: false,
+                    };
+                }
+            }
+            
             setChatMessages((prev) => [...prev, botResponse]);
         }, 1500);
     };
 
-    // Auto scroll to bottom when new message
+    // Auto scroll to bottom when new message (only within chat container, prevent page scroll)
     useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (chatEndRef.current) {
+            const chatContainer = chatEndRef.current.closest('.overflow-y-auto');
+            if (chatContainer) {
+                // Scroll only within chat container, not the whole page
+                chatContainer.scrollTo({
+                    top: chatContainer.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }
+        }
     }, [chatMessages, isTyping]);
 
     return (
@@ -499,10 +647,28 @@ export default function CustomerService() {
                                                     className={`max-w-[85%] md:max-w-[75%] p-4 rounded-2xl shadow-lg ${
                                                         msg.from === 'user'
                                                             ? 'bg-gradient-to-br from-green-600 to-emerald-600 text-white rounded-br-sm'
+                                                            : msg.from === 'cs'
+                                                            ? 'bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200 text-gray-800 rounded-bl-sm'
                                                             : 'bg-white border-2 border-gray-200 text-gray-800 rounded-bl-sm'
                                                     }`}
                                                 >
-                                                    <p className="text-sm md:text-base leading-relaxed">{msg.text}</p>
+                                                    {(msg.from === 'bot' || msg.from === 'cs') && (
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            {msg.from === 'bot' && msg.isAutoAnswer && (
+                                                                <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-xs">
+                                                                    <Sparkles className="w-3 h-3 mr-1" />
+                                                                    Auto-Answer
+                                                                </Badge>
+                                                            )}
+                                                            {msg.from === 'cs' && (
+                                                                <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">
+                                                                    <User className="w-3 h-3 mr-1" />
+                                                                    Customer Service
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    <p className="text-sm md:text-base leading-relaxed whitespace-pre-line">{msg.text}</p>
                                                     <div className={`flex items-center gap-1 mt-2 text-xs ${
                                                         msg.from === 'user' ? 'text-green-100' : 'text-gray-500'
                                                     }`}>
@@ -546,12 +712,35 @@ export default function CustomerService() {
                                 </div>
 
                                 {/* Input - Enhanced */}
-                                <div className="flex gap-3">
+                                <div 
+                                    className="flex gap-3"
+                                    onKeyDown={(e) => {
+                                        // Prevent any form submission or page scroll
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                        }
+                                    }}
+                                >
                                     <Input
+                                        id="chat-input"
                                         placeholder="Ketik pesan Anda..."
                                         value={message}
                                         onChange={(e) => setMessage(e.target.value)}
-                                        onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleSendMessage(e);
+                                                // Keep focus in chat area
+                                                setTimeout(() => {
+                                                    const chatContainer = document.querySelector('.overflow-y-auto');
+                                                    if (chatContainer) {
+                                                        chatContainer.scrollTop = chatContainer.scrollHeight;
+                                                    }
+                                                }, 100);
+                                            }
+                                        }}
                                         className="text-sm md:text-base flex-1 h-12 border-2 border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl"
                                     />
                                     <motion.div
@@ -559,7 +748,8 @@ export default function CustomerService() {
                                         whileTap={{ scale: 0.95 }}
                                     >
                                         <Button
-                                            onClick={handleSendMessage}
+                                            type="button"
+                                            onClick={(e) => handleSendMessage(e)}
                                             className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white h-12 px-6 shadow-lg rounded-xl"
                                             disabled={!message.trim()}
                                         >

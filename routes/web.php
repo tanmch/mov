@@ -12,6 +12,9 @@ Route::get('/', function () {
     ]);
 });
 
+// Artikel route - accessible to all users (guest, petani, k-petani)
+Route::get('/artikel', [\App\Http\Controllers\ArticleController::class, 'indexPublic'])->name('artikel');
+
 Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
@@ -50,13 +53,10 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('Penyiraman');
     })->name('penyiraman');
     
-    Route::get('/deteksi', function () {
-        return Inertia::render('DeteksiKematangan');
-    })->name('deteksi');
-    
-    Route::get('/artikel', function () {
-        return Inertia::render('ArtikelEdukasi');
-    })->name('artikel');
+    Route::get('/deteksi', [\App\Http\Controllers\DetectionController::class, 'index'])->name('deteksi');
+    Route::post('/detections', [\App\Http\Controllers\DetectionController::class, 'store'])->name('detections.store');
+    Route::delete('/detections/{id}', [\App\Http\Controllers\DetectionController::class, 'destroy'])->name('detections.destroy');
+    Route::delete('/detections', [\App\Http\Controllers\DetectionController::class, 'destroyAll'])->name('detections.destroyAll');
     
     Route::get('/customer-service', function () {
         return Inertia::render('CustomerService');
@@ -94,6 +94,12 @@ Route::middleware('auth')->group(function () {
         
         // Sensor Thresholds - Update (K-Petani only)
         Route::put('/sensor-thresholds/{sensorType}', [\App\Http\Controllers\SensorThresholdController::class, 'update'])->name('sensor-thresholds.update');
+        
+        // Article Management (CRUD) - K-Petani only
+        Route::post('/articles', [\App\Http\Controllers\ArticleController::class, 'store'])->name('articles.store');
+        Route::put('/articles/{article}', [\App\Http\Controllers\ArticleController::class, 'update'])->name('articles.update');
+        Route::delete('/articles/{article}', [\App\Http\Controllers\ArticleController::class, 'destroy'])->name('articles.destroy');
+        Route::post('/articles/generate', [\App\Http\Controllers\ArticleController::class, 'generateFromUrl'])->name('articles.generate');
         
         // Robot schedules - Create, Update, Cancel, Delete (K-Petani only)
         Route::prefix('api/robot')->group(function () {

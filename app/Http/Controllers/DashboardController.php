@@ -149,7 +149,7 @@ class DashboardController extends Controller
     }
 
     /**
-     * Get maturity data from all bloks
+     * Get maturity data from all bloks (per blok and average)
      */
     protected function getMaturityData(): array
     {
@@ -168,23 +168,45 @@ class DashboardController extends Controller
 
         if ($bloks->isEmpty()) {
             return [
-                ['name' => 'Mentah', 'value' => 0, 'color' => '#ef4444'],
-                ['name' => 'Hampir Matang', 'value' => 0, 'color' => '#f59e0b'],
-                ['name' => 'Matang', 'value' => 0, 'color' => '#22c55e'],
-                ['name' => 'Lewat Matang', 'value' => 0, 'color' => '#6b7280'],
+                'average' => [
+                    ['name' => 'Mentah', 'value' => 0, 'color' => '#ef4444'],
+                    ['name' => 'Hampir Matang', 'value' => 0, 'color' => '#f59e0b'],
+                    ['name' => 'Matang', 'value' => 0, 'color' => '#22c55e'],
+                    ['name' => 'Lewat Matang', 'value' => 0, 'color' => '#6b7280'],
+                ],
+                'perBlok' => [],
             ];
         }
 
+        // Calculate average
         $totalMentah = $bloks->sum('persentase_mentah') / $bloks->count();
         $totalHampirMatang = $bloks->sum('persentase_hampir_matang') / $bloks->count();
         $totalMatang = $bloks->sum('persentase_matang') / $bloks->count();
         $totalLewatMatang = $bloks->sum('persentase_lewat_matang') / $bloks->count();
 
+        // Per blok data
+        $perBlok = $bloks->map(function($blok) {
+            return [
+                'blok_id' => $blok->id,
+                'blok_code' => $blok->code,
+                'blok_name' => $blok->name,
+                'data' => [
+                    ['name' => 'Mentah', 'value' => round($blok->persentase_mentah ?? 0, 1), 'color' => '#ef4444'],
+                    ['name' => 'Hampir Matang', 'value' => round($blok->persentase_hampir_matang ?? 0, 1), 'color' => '#f59e0b'],
+                    ['name' => 'Matang', 'value' => round($blok->persentase_matang ?? 0, 1), 'color' => '#22c55e'],
+                    ['name' => 'Lewat Matang', 'value' => round($blok->persentase_lewat_matang ?? 0, 1), 'color' => '#6b7280'],
+                ],
+            ];
+        })->toArray();
+
         return [
-            ['name' => 'Mentah', 'value' => round($totalMentah, 1), 'color' => '#ef4444'],
-            ['name' => 'Hampir Matang', 'value' => round($totalHampirMatang, 1), 'color' => '#f59e0b'],
-            ['name' => 'Matang', 'value' => round($totalMatang, 1), 'color' => '#22c55e'],
-            ['name' => 'Lewat Matang', 'value' => round($totalLewatMatang, 1), 'color' => '#6b7280'],
+            'average' => [
+                ['name' => 'Mentah', 'value' => round($totalMentah, 1), 'color' => '#ef4444'],
+                ['name' => 'Hampir Matang', 'value' => round($totalHampirMatang, 1), 'color' => '#f59e0b'],
+                ['name' => 'Matang', 'value' => round($totalMatang, 1), 'color' => '#22c55e'],
+                ['name' => 'Lewat Matang', 'value' => round($totalLewatMatang, 1), 'color' => '#6b7280'],
+            ],
+            'perBlok' => $perBlok,
         ];
     }
 

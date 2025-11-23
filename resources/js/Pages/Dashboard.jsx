@@ -18,8 +18,9 @@ import { ref, onValue, off } from 'firebase/database';
 import AnimatedBackground from '@/Components/AnimatedBackground';
 import { useHeaderOffset } from '@/hooks/useHeaderOffset';
 import { setLocalStorageDebounced, getLocalStorage } from '@/utils/localStorage';
+import BackButton from '@/Components/BackButton';
 
-export default function Dashboard({ robotStatus, maturityData, sensorData, trendData, notifications, upcomingSchedules, bloks = [], blokOptions = [], selectedTimeRange: initialTimeRange = '24h', selectedBlokId: initialBlokId = 'average', thresholds = {} }) {
+export default function Dashboard({ robotStatus, maturityData = { average: [], perBlok: [] }, sensorData, trendData, notifications, upcomingSchedules, bloks = [], blokOptions = [], selectedTimeRange: initialTimeRange = '24h', selectedBlokId: initialBlokId = 'average', thresholds = {} }) {
     const { auth } = usePage().props;
     const { isKPetani, canEdit, userRole } = useRole();
     const topOffset = useHeaderOffset();
@@ -56,6 +57,8 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
     const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
     const [isDropdownOpenKondisi, setIsDropdownOpenKondisi] = useState(false);
     const [isDropdownOpenTren, setIsDropdownOpenTren] = useState(false);
+    const [isDropdownOpenMaturity, setIsDropdownOpenMaturity] = useState(false);
+    const [selectedMaturityBlokId, setSelectedMaturityBlokId] = useState('average');
     const firebaseListenersRef = useRef([]);
     const selectedBlokIdRef = useRef(selectedBlokId); // Ref to track current selected blok
     
@@ -1187,6 +1190,11 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                 
                 {/* Content */}
                 <div className="relative z-10 p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                    {/* Back Button */}
+                    <div className="mb-4">
+                        <BackButton href="/dashboard" />
+                    </div>
+                    
                     {/* Header dengan Gradient & Animation */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
@@ -1542,7 +1550,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                     <ResponsiveContainer width="100%" height={200}>
                                         <PieChart>
                                             <Pie
-                                                data={maturityData}
+                                                data={maturityData.average || maturityData}
                                                 cx="50%"
                                                 cy="50%"
                                                 innerRadius={50}
@@ -1552,7 +1560,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                 label={(entry) => `${entry.value}%`}
                                                 labelStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                                             >
-                                                {maturityData.map((entry, index) => (
+                                                {(maturityData.average || maturityData).map((entry, index) => (
                                                     <Cell key={`cell-${index}`} fill={entry.color} />
                                                 ))}
                                             </Pie>
@@ -1567,7 +1575,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="grid grid-cols-2 gap-2 mt-4">
-                                        {maturityData.map((item, index) => (
+                                        {(maturityData.average || maturityData).map((item, index) => (
                                             <motion.div
                                                 key={item.name}
                                                 initial={{ opacity: 0, x: -20 }}
@@ -1810,15 +1818,32 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                 <p className="text-xs text-gray-600 font-medium">Peringatan sensor & sistem</p>
                                             </div>
                                         </div>
-                                        {realtimeNotifications.length > 0 && (
-                                            <motion.div
-                                                initial={{ scale: 0 }}
-                                                animate={{ scale: 1 }}
-                                                className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg"
-                                            >
-                                                <span className="text-xs font-bold text-white">{realtimeNotifications.length}</span>
-                                            </motion.div>
-                                        )}
+                                        <div className="flex items-center gap-2">
+                                            {realtimeNotifications.length > 0 && (
+                                                <>
+                                                    <motion.button
+                                                        whileHover={{ scale: 1.05 }}
+                                                        whileTap={{ scale: 0.95 }}
+                                                        onClick={() => {
+                                                            if (confirm('Yakin ingin menghapus semua notifikasi?')) {
+                                                                setRealtimeNotifications([]);
+                                                                setLocalStorageDebounced('dashboardNotifications', []);
+                                                            }
+                                                        }}
+                                                        className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors"
+                                                    >
+                                                        Hapus Semua
+                                                    </motion.button>
+                                                    <motion.div
+                                                        initial={{ scale: 0 }}
+                                                        animate={{ scale: 1 }}
+                                                        className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg"
+                                                    >
+                                                        <span className="text-xs font-bold text-white">{realtimeNotifications.length}</span>
+                                                    </motion.div>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                     
                                     {(() => {

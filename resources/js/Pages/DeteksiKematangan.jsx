@@ -1,71 +1,131 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, usePage } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Badge } from '@/Components/ui/badge';
-import { Camera, Upload, Trash2, CheckCircle, Clock, Sparkles, Loader, RefreshCw } from 'lucide-react';
+import { Camera, Upload, Trash2, CheckCircle, Clock, Sparkles, Loader, RefreshCw, X, MapPin, Save } from 'lucide-react';
+import { Input } from '@/Components/ui/input';
+import { Label } from '@/Components/ui/label';
 import AnimatedBackground from '@/Components/AnimatedBackground';
 import SkeletonLoader, { SkeletonList } from '@/Components/ui/SkeletonLoader';
 import EmptyState from '@/Components/ui/EmptyState';
 import LoadingOverlay from '@/Components/ui/LoadingOverlay';
 import BackButton from '@/Components/BackButton';
+import { useMangoDetection } from '@/hooks/useMangoDetection';
+import CameraCapture from '@/Components/CameraCapture';
 
-export default function DeteksiKematangan() {
-    const { auth } = usePage().props;
+export default function DeteksiKematangan({ blokOptions = [], detectionHistory: initialHistory = [] }) {
+    const { auth, flash } = usePage().props;
     const userRole = auth?.user?.role;
+    const router = usePage().router;
+    const fileInputRef = useRef(null);
     const [isDetecting, setIsDetecting] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [isDragging, setIsDragging] = useState(false);
-    const [detectionHistory, setDetectionHistory] = useState([
-        {
-            id: 1,
-            image: '🥭',
-            maturity: 85,
-            status: 'Matang',
-            recommendation: 'Siap dipanen dalam 1-2 hari',
-            timestamp: '2 jam lalu',
-        },
-        {
-            id: 2,
-            image: '🥭',
-            maturity: 60,
-            status: 'Setengah Matang',
-            recommendation: 'Tunggu 5-7 hari lagi',
-            timestamp: '1 hari lalu',
-        },
-        {
-            id: 3,
-            image: '🥭',
-            maturity: 35,
-            status: 'Muda',
-            recommendation: 'Masih memerlukan 2-3 minggu',
-            timestamp: '3 hari lalu',
-        },
-    ]);
+    const [showCamera, setShowCamera] = useState(false);
+    const [showBlokModal, setShowBlokModal] = useState(false);
+    const [selectedBlokId, setSelectedBlokId] = useState('');
+    const [pendingFile, setPendingFile] = useState(null);
+    const [pendingDetections, setPendingDetections] = useState(null);
+    const [currentImage, setCurrentImage] = useState(null);
+    const [currentDetections, setCurrentDetections] = useState([]);
+    const [detectionHistory, setDetectionHistory] = useState(initialHistory || []);
+    const [notification, setNotification] = useState(null);
+
+    const { loadModel, detectFromFile, detectFromImage, isLoading: isModelLoading, isModelLoaded, error: modelError } = useMangoDetection();
 
     useEffect(() => {
+        // Load model on mount
+        loadModel().catch(err => {
+            console.error('Failed to load model:', err);
+        });
+        
         const timer = setTimeout(() => {
             setIsLoading(false);
         }, 1000);
         return () => clearTimeout(timer);
     }, []);
 
-    const handleUploadImage = () => {
-        setIsDetecting(true);
-        setTimeout(() => {
-            const newDetection = {
-                id: Date.now(),
-                image: '🥭',
-                maturity: Math.floor(Math.random() * 40) + 60,
-                status: 'Matang',
-                recommendation: 'Siap dipanen dalam 2-3 hari',
-                timestamp: 'Baru saja',
-            };
-            setDetectionHistory([newDetection, ...detectionHistory]);
+    // Show notification from flash message
+    useEffect(() => {
+        if (flash?.success) {
+            setNotification({
+                type: 'success',
+                message: flash.success,
+            });
+            setTimeout(() => setNotification(null), 5000);
+        }
+    }, [flash]);
+
+    const handleFileSelect = async (file) => {
+        if (!file) return;
+        
+        // Validate image type
+        const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        if (!validImageTypes.includes(file.type.toLowerCase())) {
+            alert('Silakan pilih file gambar yang valid (JPEG, PNG, atau WebP)');
+            return;
+        }
+
+        try {
+            setIsDetecting(true);
+            setCurrentImage(URL.createObjectURL(file));
+            
+            const result = await detectFromFile(file);
+            
+            if (result && result.detections && result.detections.length > 0) {
+                // Get the best detection (highest confidence)
+                const bestDetection = result.detections.reduce((best, current) => 
+                    current.confidence > best.confidence ? current : best
+                );
+                
+                const newDetection = {
+                    id: Date.now(),
+                    imageUrl: result.imageUrl,
+                    maturity: bestDetection.maturity,
+                    status: bestDetection.status,
+                    confidence: bestDetection.confidence,
+                    className: bestDetection.className,
+                    recommendation: getRecommendation(bestDetection.maturity, bestDetection.status),
+                    timestamp: 'Baru saja',
+                    detections: result.detections,
+                    imageWidth: result.imageWidth,
+                    imageHeight: result.imageHeight,
+                };
+                
+                setCurrentDetections(result.detections);
+                setDetectionHistory([newDetection, ...detectionHistory]);
+                
+                // Store file and detections for saving to database
+                setPendingFile(file);
+                setPendingDetections(result.detections);
+                
+                // Show blok selection modal
+                setShowBlokModal(true);
+            } else {
+                alert('Tidak ada mangga yang terdeteksi dalam gambar. Pastikan gambar mengandung buah mangga.');
+            }
+        } catch (error) {
+            console.error('Detection error:', error);
+            alert('Gagal melakukan deteksi: ' + error.message);
+        } finally {
             setIsDetecting(false);
-        }, 2000);
+        }
+    };
+
+    const handleUploadImage = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileInputChange = (e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            handleFileSelect(file);
+        }
+        // Reset input
+        e.target.value = '';
     };
 
     const handleDragOver = (e) => {
@@ -80,11 +140,220 @@ export default function DeteksiKematangan() {
     const handleDrop = (e) => {
         e.preventDefault();
         setIsDragging(false);
-        handleUploadImage();
+        const file = e.dataTransfer.files?.[0];
+        if (file) {
+            handleFileSelect(file);
+        }
     };
 
-    const handleDeleteDetection = (id) => {
-        setDetectionHistory(detectionHistory.filter((d) => d.id !== id));
+    const handleDeleteDetection = async (id) => {
+        if (!confirm('Yakin ingin menghapus riwayat deteksi ini?')) {
+            return;
+        }
+
+        try {
+            const response = await window.axios.delete(route('detections.destroy', id));
+            if (response.data.success) {
+                setDetectionHistory(detectionHistory.filter((d) => d.id !== id));
+                if (currentImage && detectionHistory.find(d => d.id === id)?.imageUrl === currentImage) {
+                    setCurrentImage(null);
+                    setCurrentDetections([]);
+                }
+                setNotification({
+                    type: 'success',
+                    message: 'Riwayat deteksi berhasil dihapus',
+                });
+                setTimeout(() => setNotification(null), 3000);
+            }
+        } catch (error) {
+            console.error('Error deleting detection:', error);
+            alert('Gagal menghapus riwayat deteksi');
+        }
+    };
+
+    const handleDeleteAllDetections = async () => {
+        if (!confirm('Yakin ingin menghapus semua riwayat deteksi?')) {
+            return;
+        }
+
+        try {
+            const response = await window.axios.delete(route('detections.destroyAll'));
+            if (response.data.success) {
+                setDetectionHistory([]);
+                setCurrentImage(null);
+                setCurrentDetections([]);
+                setNotification({
+                    type: 'success',
+                    message: 'Semua riwayat deteksi berhasil dihapus',
+                });
+                setTimeout(() => setNotification(null), 3000);
+            }
+        } catch (error) {
+            console.error('Error deleting all detections:', error);
+            alert('Gagal menghapus semua riwayat deteksi');
+        }
+    };
+
+    const handleCameraCapture = async (file, detections) => {
+        if (detections && detections.length > 0) {
+            const imageUrl = URL.createObjectURL(file);
+            const bestDetection = detections.reduce((best, current) => 
+                current.confidence > best.confidence ? current : best
+            );
+            
+            const newDetection = {
+                id: Date.now(),
+                imageUrl: imageUrl,
+                maturity: bestDetection.maturity,
+                status: bestDetection.status,
+                confidence: bestDetection.confidence,
+                className: bestDetection.className,
+                recommendation: getRecommendation(bestDetection.maturity, bestDetection.status),
+                timestamp: 'Baru saja',
+                detections: detections,
+            };
+            
+            setCurrentDetections(detections);
+            setCurrentImage(imageUrl);
+            setDetectionHistory([newDetection, ...detectionHistory]);
+            
+            // Store file and detections for saving to database
+            setPendingFile(file);
+            setPendingDetections(detections);
+            
+            setShowCamera(false);
+            // Show blok selection modal
+            setShowBlokModal(true);
+        } else {
+            alert('Tidak ada mangga yang terdeteksi. Pastikan kamera mengarah ke buah mangga.');
+        }
+    };
+
+    const handleSaveDetection = async () => {
+        if (!selectedBlokId || !pendingFile || !pendingDetections) {
+            alert('Silakan pilih blok terlebih dahulu');
+            return;
+        }
+
+        try {
+            setIsDetecting(true);
+            
+            // Validate required data
+            if (!selectedBlokId) {
+                alert('Silakan pilih blok terlebih dahulu');
+                setIsDetecting(false);
+                return;
+            }
+            
+            if (!pendingFile) {
+                alert('File gambar tidak ditemukan');
+                setIsDetecting(false);
+                return;
+            }
+            
+            if (!pendingDetections || !Array.isArray(pendingDetections) || pendingDetections.length === 0) {
+                alert('Data deteksi tidak valid');
+                setIsDetecting(false);
+                return;
+            }
+            
+            const formData = new FormData();
+            // Ensure blok_id is an integer
+            const blokIdInt = parseInt(selectedBlokId, 10);
+            if (isNaN(blokIdInt)) {
+                alert('Blok ID tidak valid');
+                setIsDetecting(false);
+                return;
+            }
+            formData.append('blok_id', blokIdInt);
+            formData.append('image', pendingFile);
+            formData.append('detections', JSON.stringify(pendingDetections));
+            
+            // Debug: Log what we're sending
+            console.log('Sending detection data:', {
+                blok_id: blokIdInt,
+                blok_id_type: typeof blokIdInt,
+                image: pendingFile?.name,
+                image_type: pendingFile?.type,
+                image_size: pendingFile?.size,
+                detections_count: pendingDetections?.length,
+                detections_preview: pendingDetections?.slice(0, 1),
+            });
+
+            // Use axios which is already configured with CSRF token
+            const response = await window.axios.post(route('detections.store'), formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            if (response.data.success) {
+                // Show success notification
+                const notificationMessage = response.data.message || 'Hasil deteksi berhasil disimpan!';
+                setNotification({
+                    type: 'success',
+                    message: notificationMessage,
+                });
+                
+                // Clear pending data
+                setPendingFile(null);
+                setPendingDetections(null);
+                setSelectedBlokId('');
+                setShowBlokModal(false);
+                
+                // Auto-hide notification after 5 seconds
+                setTimeout(() => {
+                    setNotification(null);
+                }, 5000);
+                
+                // Reload page to update dashboard after 2 seconds
+                setTimeout(() => {
+                    router.reload({ only: [] });
+                }, 2000);
+            } else {
+                alert(response.data.message || 'Gagal menyimpan hasil deteksi');
+            }
+        } catch (error) {
+            console.error('Save error:', error);
+            console.error('Error response:', error.response?.data);
+            console.error('Error status:', error.response?.status);
+            
+            // Show detailed error message
+            let errorMessage = 'Gagal menyimpan hasil deteksi';
+            
+            if (error.response?.data?.errors) {
+                // Laravel validation errors
+                const errors = error.response.data.errors;
+                const errorList = Object.entries(errors)
+                    .map(([field, messages]) => {
+                        const msgArray = Array.isArray(messages) ? messages : [messages];
+                        return `${field}: ${msgArray.join(', ')}`;
+                    })
+                    .join('\n');
+                errorMessage = `Validasi gagal:\n${errorList}`;
+            } else if (error.response?.data?.message) {
+                errorMessage = error.response.data.message;
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            // Show error in console for debugging
+            console.error('Final error message:', errorMessage);
+            
+            alert(errorMessage);
+        } finally {
+            setIsDetecting(false);
+        }
+    };
+
+    const getRecommendation = (maturity, status) => {
+        if (maturity >= 75) {
+            return 'Siap dipanen dalam 1-2 hari. Buah sudah matang optimal.';
+        } else if (maturity >= 50) {
+            return 'Tunggu 5-7 hari lagi. Buah masih dalam proses pematangan.';
+        } else {
+            return 'Masih memerlukan 2-3 minggu. Buah masih muda, perlu perawatan lebih lanjut.';
+        }
     };
 
     const getMaturityColor = (maturity) => {
@@ -182,23 +451,42 @@ export default function DeteksiKematangan() {
                                 <p className="text-sm text-gray-600 mb-6">
                                     Ambil foto buah mangga untuk analisis kematangan menggunakan AI
                                 </p>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                                    onChange={handleFileInputChange}
+                                    className="hidden"
+                                />
                                 <div className="flex gap-3 justify-center">
                                     <Button
                                         onClick={handleUploadImage}
-                                        disabled={isDetecting}
+                                        disabled={isDetecting || !isModelLoaded}
                                         className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 flex items-center gap-2 shadow-lg"
                                     >
                                         <Upload className="w-4 h-4" />
-                                        {isDetecting ? 'Mendeteksi...' : 'Upload Gambar'}
+                                        {isDetecting ? 'Mendeteksi...' : isModelLoading ? 'Memuat Model...' : 'Upload Gambar'}
                                     </Button>
                                     <Button 
+                                        onClick={() => setShowCamera(true)}
+                                        disabled={!isModelLoaded}
                                         variant="outline" 
                                         className="border-2 border-yellow-400 text-yellow-700 hover:bg-yellow-50"
                                     >
                                         <Camera className="w-4 h-4 mr-2" />
-                                        Buka Kamera
+                                        {isModelLoading ? 'Memuat Model...' : 'Buka Kamera'}
                                     </Button>
                                 </div>
+                                {modelError && (
+                                    <p className="mt-4 text-sm text-red-600 text-center">
+                                        Error: {modelError}
+                                    </p>
+                                )}
+                                {!isModelLoaded && !isModelLoading && (
+                                    <p className="mt-4 text-sm text-yellow-600 text-center">
+                                        Model AI sedang dimuat...
+                                    </p>
+                                )}
                             </div>
                         </Card>
                     </motion.div>
@@ -261,9 +549,22 @@ export default function DeteksiKematangan() {
                         <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-gray-200/50 shadow-xl">
                             <div className="flex items-center justify-between mb-4">
                                 <h3 className="text-lg font-bold text-gray-900">Riwayat Deteksi</h3>
-                                <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-blue-200">
-                                    {detectionHistory.length} hasil
-                                </Badge>
+                                <div className="flex items-center gap-2">
+                                    <Badge variant="secondary" className="bg-blue-100 text-blue-700 border-blue-200">
+                                        {detectionHistory.length} hasil
+                                    </Badge>
+                                    {detectionHistory.length > 0 && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleDeleteAllDetections}
+                                            className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                        >
+                                            <Trash2 className="w-4 h-4 mr-1" />
+                                            Hapus Semua
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
 
                             {isLoading ? (
@@ -285,9 +586,17 @@ export default function DeteksiKematangan() {
                                                         {/* Image Preview */}
                                                         <motion.div
                                                             whileHover={{ scale: 1.1, rotate: 5 }}
-                                                            className="w-20 h-20 bg-gradient-to-br from-yellow-200 via-orange-200 to-amber-200 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg"
+                                                            className="w-20 h-20 bg-gradient-to-br from-yellow-200 via-orange-200 to-amber-200 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg overflow-hidden"
                                                         >
-                                                            <span className="text-5xl">{result.image}</span>
+                                                            {result.imageUrl ? (
+                                                                <img 
+                                                                    src={result.imageUrl} 
+                                                                    alt="Detection result" 
+                                                                    className="w-full h-full object-cover"
+                                                                />
+                                                            ) : (
+                                                                <span className="text-5xl">🥭</span>
+                                                            )}
                                                         </motion.div>
 
                                                         {/* Details */}
@@ -380,6 +689,148 @@ export default function DeteksiKematangan() {
                         </Card>
                     </motion.div>
                 </div>
+
+                {/* Camera Capture Modal */}
+                {showCamera && (
+                    <CameraCapture
+                        isOpen={showCamera}
+                        onClose={() => setShowCamera(false)}
+                        onCapture={handleCameraCapture}
+                        isModelLoaded={isModelLoaded}
+                    />
+                )}
+
+                {/* Blok Selection Modal */}
+                {showBlokModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                                    <MapPin className="w-5 h-5 text-green-600" />
+                                    Pilih Blok Kebun
+                                </h3>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                        setShowBlokModal(false);
+                                        setPendingFile(null);
+                                        setPendingDetections(null);
+                                        setSelectedBlokId('');
+                                    }}
+                                    className="h-8 w-8 p-0"
+                                >
+                                    <X className="w-4 h-4" />
+                                </Button>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <Label htmlFor="blok" className="text-sm font-medium text-gray-700 mb-2 block">
+                                        Blok Kebun <span className="text-red-500">*</span>
+                                    </Label>
+                                    <select
+                                        id="blok"
+                                        value={selectedBlokId}
+                                        onChange={(e) => setSelectedBlokId(e.target.value)}
+                                        className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
+                                        required
+                                    >
+                                        <option value="">Pilih Blok...</option>
+                                        {blokOptions.map((blok) => (
+                                            <option key={blok.value} value={blok.value}>
+                                                {blok.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {pendingDetections && pendingDetections.length > 0 && (
+                                    <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                        <p className="text-sm text-green-700 font-medium mb-1">
+                                            Hasil Deteksi:
+                                        </p>
+                                        <p className="text-xs text-green-600">
+                                            {pendingDetections.length} mangga terdeteksi
+                                            {pendingDetections[0]?.status && ` - Status: ${pendingDetections[0].status}`}
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-3">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                            setShowBlokModal(false);
+                                            setPendingFile(null);
+                                            setPendingDetections(null);
+                                            setSelectedBlokId('');
+                                        }}
+                                        className="flex-1"
+                                    >
+                                        Batal
+                                    </Button>
+                                    <Button
+                                        onClick={handleSaveDetection}
+                                        disabled={!selectedBlokId || isDetecting}
+                                        className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                                    >
+                                        {isDetecting ? (
+                                            <>
+                                                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                                                Menyimpan...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Save className="w-4 h-4 mr-2" />
+                                                Simpan
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Notification Toast */}
+                {notification && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -50, x: '-50%' }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -50 }}
+                        className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100]"
+                    >
+                        <Card className={`p-4 shadow-2xl ${
+                            notification.type === 'success' 
+                                ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' 
+                                : 'bg-gradient-to-r from-red-500 to-red-600 text-white'
+                        }`}>
+                            <div className="flex items-center gap-3">
+                                {notification.type === 'success' ? (
+                                    <CheckCircle className="w-5 h-5" />
+                                ) : (
+                                    <X className="w-5 h-5" />
+                                )}
+                                <p className="font-medium">{notification.message}</p>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setNotification(null)}
+                                    className="ml-2 h-6 w-6 p-0 text-white hover:bg-white/20"
+                                >
+                                    <X className="w-4 h-4" />
+                                </Button>
+                            </div>
+                        </Card>
+                    </motion.div>
+                )}
             </div>
         </AuthenticatedLayout>
     );

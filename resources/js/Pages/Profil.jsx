@@ -452,7 +452,7 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                         </Card>
                     </motion.div>
 
-                    {/* K-Petani Only: User Management */}
+                    {/* K-Petani Only: Manajemen Petani */}
                     <KPetaniOnly>
                         <motion.div
                             initial={{ opacity: 0, y: 20 }}
@@ -466,7 +466,7 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                                             <Users className="w-6 h-6 text-white" />
                                         </div>
                                         <div>
-                                            <h3 className="text-lg font-bold text-gray-900">User Management</h3>
+                                            <h3 className="text-lg font-bold text-gray-900">Manajemen Petani</h3>
                                             <p className="text-sm text-gray-600">Kelola user dan petani</p>
                                         </div>
                                     </div>

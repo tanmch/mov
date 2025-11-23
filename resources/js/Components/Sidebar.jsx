@@ -205,7 +205,7 @@ export default function Sidebar() {
     // Sidebar content component - Static to prevent re-renders
     const SidebarContent = ({ isCollapsed, isActive }) => {
         return (
-        <div className="relative h-full flex flex-col overflow-visible">
+        <div className={`relative flex flex-col ${isCollapsed ? '' : 'h-full'}`} style={{ overflow: 'visible' }}>
             {/* Static Background - No animations to prevent re-renders */}
             <div className="absolute inset-0 opacity-30 pointer-events-none" style={{ zIndex: 0 }}>
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-200/40 via-purple-200/40 to-pink-200/40" />
@@ -217,84 +217,169 @@ export default function Sidebar() {
 
             <div className="relative h-full flex flex-col min-h-0" style={{ zIndex: 1, isolation: 'isolate' }}>
                 {/* Logo Section - Fixed Height */}
-                <div className="p-3 md:p-4 border-b border-white/20 flex-shrink-0 relative" style={{ zIndex: 2 }}>
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-lg flex items-center justify-center shadow-xl shadow-indigo-500/40 flex-shrink-0">
-                            <Zap className="w-4 h-4 text-white" />
-                        </div>
+                <div 
+                    className={`${isCollapsed ? 'px-2' : 'p-3 md:p-4'} ${isCollapsed ? 'border-b-0' : 'border-b border-white/20'} flex-shrink-0 relative`} 
+                    style={{ 
+                        zIndex: 2,
+                        paddingTop: isCollapsed ? '0.5rem' : undefined,
+                        paddingBottom: isCollapsed ? '0.75rem' : undefined,
+                    }}
+                >
+                    <div className={`flex items-center justify-center ${isCollapsed ? 'gap-0' : 'gap-3'}`}>
+                        <motion.div 
+                            className={`${isCollapsed ? 'w-8 h-8' : 'w-8 h-8'} bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 ${isCollapsed ? 'rounded-xl' : 'rounded-xl'} flex items-center justify-center ${isCollapsed ? 'shadow-xl' : 'shadow-xl'} shadow-indigo-500/40 flex-shrink-0 transition-all duration-300`}
+                            whileHover={{ scale: 1.1, rotate: 5 }}
+                        >
+                            <Zap className={`${isCollapsed ? 'w-4 h-4' : 'w-4 h-4'} text-white`} />
+                        </motion.div>
                         {!isCollapsed && (
-                            <div className="overflow-hidden">
+                            <motion.div 
+                                className="overflow-hidden"
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -10 }}
+                            >
                                 <h2 className="text-base font-extrabold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent whitespace-nowrap">
                                     Quick Actions
                                 </h2>
                                 <p className="text-[10px] text-gray-600 font-medium">Akses Cepat</p>
-                            </div>
+                            </motion.div>
                         )}
                     </div>
                 </div>
 
                 {/* Quick Actions Grid - No scroll needed */}
                 <div 
-                    className="flex-1 min-h-0 overflow-visible p-3 md:p-4 flex items-center justify-center"
+                    className={`flex-1 min-h-0 overflow-visible ${isCollapsed ? 'px-2' : 'p-3 md:p-4'} flex items-center justify-center`}
+                    style={{
+                        paddingTop: isCollapsed ? '0.5rem' : undefined,
+                        paddingBottom: isCollapsed ? '0.5rem' : undefined,
+                    }}
                 >
                     {isCollapsed ? (
-                        // Collapsed View - Enhanced Vertical Icons
-                        <div className="space-y-2.5 w-full">
+                        // Collapsed View - Dynamic Island Style
+                        <div className="w-full" style={{ marginTop: 0, marginBottom: 0 }}>
+                            <div className="flex flex-col" style={{ gap: '1rem' }}>
                                 {quickActions.map((action) => {
                                     const Icon = action.icon;
                                     const active = isActive(action.href);
                                     return (
-                                        <div
+                                        <motion.div
                                             key={action.id}
                                             className="group relative"
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
                                         >
-                                            <Link href={action.href} className="block">
-                                                <div
-                                                    className={`relative w-full h-14 bg-gradient-to-br ${action.bgColor} backdrop-blur-md rounded-xl border-2 ${active ? action.hoverBorder : action.borderColor} shadow-lg hover:shadow-2xl transition-all duration-300 overflow-visible cursor-pointer flex items-center justify-center group-hover:border-opacity-100 group-hover:scale-105`}
+                                            <Link href={action.href} className="block group/link">
+                                                <motion.div
+                                                    className={`relative w-full ${isCollapsed ? 'h-12' : 'h-14'} bg-gradient-to-br ${action.bgColor} backdrop-blur-xl ${isCollapsed ? 'rounded-2xl' : 'rounded-xl'} ${isCollapsed ? 'border border-white/30' : 'border-2'} ${active ? action.hoverBorder : action.borderColor} ${isCollapsed ? 'shadow-lg' : 'shadow-lg'} hover:shadow-2xl transition-all duration-300 overflow-visible cursor-pointer flex items-center justify-center group-hover:border-opacity-100`}
+                                                    whileHover={isCollapsed ? { scale: 1.05, y: -2 } : {}}
+                                                    style={{
+                                                        backdropFilter: isCollapsed ? 'blur(20px) saturate(180%)' : undefined,
+                                                        WebkitBackdropFilter: isCollapsed ? 'blur(20px) saturate(180%)' : undefined,
+                                                    }}
                                                 >
                                                     {/* Animated Background Gradient */}
-                                                    <div className={`absolute inset-0 bg-gradient-to-br ${action.bgColor} opacity-100 group-hover:opacity-90 transition-opacity duration-300 rounded-xl`}></div>
+                                                    <div className={`absolute inset-0 bg-gradient-to-br ${action.bgColor} opacity-100 group-hover:opacity-90 transition-opacity duration-300 ${isCollapsed ? 'rounded-2xl' : 'rounded-xl'}`}></div>
                                                     
                                                     {/* Shimmer Effect - Only on hover */}
-                                                    <div className="absolute inset-0 opacity-0 group-hover:opacity-30 transition-opacity duration-300 pointer-events-none rounded-xl"></div>
+                                                    <motion.div 
+                                                        className={`absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-300 pointer-events-none ${isCollapsed ? 'rounded-2xl' : 'rounded-xl'}`}
+                                                        animate={{
+                                                            background: active ? [
+                                                                'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
+                                                                'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)',
+                                                            ] : 'transparent'
+                                                        }}
+                                                        transition={{
+                                                            duration: 2,
+                                                            repeat: active ? Infinity : 0,
+                                                            repeatType: 'reverse'
+                                                        }}
+                                                    ></motion.div>
                                                     
-                                                    {/* Glow Effect on Hover - Static, no animation */}
-                                                    <div className={`absolute inset-0 bg-gradient-to-br ${action.hoverGlow} blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-xl`}></div>
+                                                    {/* Glow Effect on Hover */}
+                                                    <motion.div 
+                                                        className={`absolute inset-0 bg-gradient-to-br ${action.hoverGlow} blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none ${isCollapsed ? 'rounded-2xl' : 'rounded-xl'}`}
+                                                        animate={{
+                                                            scale: active ? [1, 1.1, 1] : 1
+                                                        }}
+                                                        transition={{
+                                                            duration: 2,
+                                                            repeat: active ? Infinity : 0
+                                                        }}
+                                                    ></motion.div>
                                                     
-                                                    {/* Icon Container - Static, no animations */}
-                                                    <div
-                                                        className={`relative z-10 w-10 h-10 bg-gradient-to-br ${action.color} rounded-xl flex items-center justify-center shadow-xl transition-transform duration-200 group-hover:scale-110 ${active ? 'ring-2 ring-white/50' : ''}`}
+                                                    {/* Icon Container - Enhanced with better sizing */}
+                                                    <motion.div
+                                                        className={`relative z-10 ${isCollapsed ? 'w-9 h-9' : 'w-10 h-10'} bg-gradient-to-br ${action.color} ${isCollapsed ? 'rounded-xl' : 'rounded-lg'} flex items-center justify-center ${isCollapsed ? 'shadow-xl' : 'shadow-xl'} transition-all duration-200 ${active ? 'ring-2 ring-white/60 ring-offset-1 ring-offset-transparent' : ''}`}
+                                                        whileHover={{ 
+                                                            scale: 1.15,
+                                                            rotate: [0, -5, 5, 0]
+                                                        }}
+                                                        transition={{
+                                                            rotate: {
+                                                                duration: 0.5,
+                                                                repeat: active ? Infinity : 0,
+                                                                repeatType: 'reverse'
+                                                            }
+                                                        }}
                                                     >
-                                                        <Icon className="w-5 h-5 text-white drop-shadow-lg" />
-                                                    </div>
+                                                        <Icon className={`${isCollapsed ? 'w-4 h-4' : 'w-5 h-5'} text-white drop-shadow-lg`} />
+                                                    </motion.div>
 
-                                                    {/* Active Indicator - Static */}
+                                                    {/* Active Indicator - Enhanced */}
                                                     {active && (
-                                                        <div
-                                                            className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-10 bg-gradient-to-b from-indigo-500 via-purple-500 to-pink-500 rounded-r-full shadow-lg"
+                                                        <motion.div
+                                                            className={`absolute left-0 top-1/2 -translate-y-1/2 ${isCollapsed ? 'w-0.5' : 'w-1'} ${isCollapsed ? 'h-8' : 'h-10'} bg-gradient-to-b from-indigo-500 via-purple-500 to-pink-500 rounded-r-full shadow-lg`}
+                                                            initial={{ scaleY: 0 }}
+                                                            animate={{ scaleY: 1 }}
+                                                            transition={{ duration: 0.3 }}
                                                         />
                                                     )}
-                                                </div>
+                                                    
+                                                    {/* Pulse ring for active state */}
+                                                    {active && (
+                                                        <motion.div
+                                                            className={`absolute inset-0 border-2 border-transparent ${isCollapsed ? 'rounded-2xl' : 'rounded-xl'}`}
+                                                            animate={{
+                                                                borderColor: [
+                                                    'rgba(99, 102, 241, 0)',
+                                                    'rgba(99, 102, 241, 0.5)',
+                                                    'rgba(99, 102, 241, 0)',
+                                                ],
+                                                scale: [1, 1.05, 1],
+                                            }}
+                                            transition={{
+                                                duration: 2,
+                                                repeat: Infinity,
+                                                ease: 'easeInOut'
+                                            }}
+                                                        />
+                                                    )}
+                                                </motion.div>
                                             </Link>
                                             
-                                            {/* Simple Text Tooltip on Hover - Only when collapsed - Outside container to avoid overflow */}
-                                            <div 
-                                                className="absolute left-full ml-2 top-1/2 -translate-y-1/2 pointer-events-none z-[9999] opacity-0 group-hover:opacity-100 transform translate-x-[-5px] group-hover:translate-x-0 transition-all duration-200 ease-out"
-                                                style={{ 
-                                                    position: 'absolute',
-                                                    left: 'calc(100% + 0.5rem)',
-                                                    willChange: 'opacity, transform'
-                                                }}
-                                            >
-                                                <div className="bg-gray-900/95 backdrop-blur-sm text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-2xl whitespace-nowrap relative">
-                                                    {action.label}
-                                                    {/* Arrow pointing to icon */}
-                                                    <div className="absolute right-full top-1/2 -translate-y-1/2 w-0 h-0 border-t-[5px] border-t-transparent border-r-[5px] border-r-gray-900/95 border-b-[5px] border-b-transparent"></div>
+                                            {/* Enhanced Tooltip on Hover - Only when collapsed */}
+                                            {isCollapsed && (
+                                                <div 
+                                                    className="absolute left-full ml-3 top-1/2 -translate-y-1/2 pointer-events-none z-[10000] opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100 translate-x-[-8px] group-hover:translate-x-0 transition-all duration-200 ease-out"
+                                                >
+                                                    <div className="bg-gradient-to-r from-gray-900 to-gray-800 backdrop-blur-sm text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-2xl whitespace-nowrap relative border border-gray-700/50">
+                                                        <span className="text-white drop-shadow-lg">
+                                                            {action.label}
+                                                        </span>
+                                                        {/* Enhanced Arrow */}
+                                                        <div className="absolute right-full top-1/2 -translate-y-1/2 w-0 h-0 border-t-[6px] border-t-transparent border-r-[6px] border-r-gray-900 border-b-[6px] border-b-transparent"></div>
+                                                        {/* Glow effect on tooltip */}
+                                                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 via-purple-500/20 to-pink-500/20 rounded-xl blur-sm -z-10"></div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </div>
+                                            )}
+                                        </motion.div>
                                     );
                                 })}
+                            </div>
                         </div>
                     ) : (
                         // Expanded View - Full Cards (Compact to fit without scroll)
@@ -348,20 +433,35 @@ export default function Sidebar() {
                     )}
                 </div>
 
-                {/* Toggle Button - Fixed Position */}
-                <div className="p-2 border-t border-white/20 flex-shrink-0 bg-gradient-to-b from-indigo-50/90 via-purple-50/80 to-pink-50/90">
+                {/* Toggle Button - Fixed Position - Enhanced */}
+                <div 
+                    className={`${isCollapsed ? 'px-2' : 'p-2'} ${isCollapsed ? 'border-t-0' : 'border-t border-white/20'} flex-shrink-0`}
+                    style={{
+                        paddingTop: isCollapsed ? '0.75rem' : undefined,
+                        paddingBottom: isCollapsed ? '0.5rem' : undefined,
+                    }}
+                >
                     <motion.button
                         whileHover={{ scale: 1.05, x: isCollapsed ? 2 : -2 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={handleToggle}
-                        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 bg-white/60 backdrop-blur-md rounded-lg border-2 border-white/40 hover:border-indigo-300/60 shadow-lg hover:shadow-xl transition-all"
+                        className={`w-full flex items-center justify-center ${isCollapsed ? 'px-2 py-1.5' : 'gap-1.5 px-2 py-1.5'} bg-white/70 backdrop-blur-xl rounded-xl border border-white/50 hover:border-indigo-300/60 ${isCollapsed ? 'shadow-lg' : 'shadow-lg'} hover:shadow-xl transition-all group`}
+                        style={{
+                            backdropFilter: isCollapsed ? 'blur(20px) saturate(180%)' : undefined,
+                            WebkitBackdropFilter: isCollapsed ? 'blur(20px) saturate(180%)' : undefined,
+                        }}
                     >
                         {isCollapsed ? (
-                            <ChevronRight className="w-4 h-4 text-gray-700" />
+                            <motion.div
+                                animate={{ x: [0, 2, 0] }}
+                                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                            >
+                                <ChevronRight className="w-4 h-4 text-gray-700 group-hover:text-indigo-600 transition-colors" />
+                            </motion.div>
                         ) : (
                             <>
-                                <ChevronLeft className="w-4 h-4 text-gray-700" />
-                                <span className="text-xs font-semibold text-gray-700">Sembunyikan</span>
+                                <ChevronLeft className="w-4 h-4 text-gray-700 group-hover:text-indigo-600 transition-colors" />
+                                <span className="text-xs font-semibold text-gray-700 group-hover:text-indigo-600 transition-colors">Sembunyikan</span>
                             </>
                         )}
                     </motion.button>
@@ -380,28 +480,41 @@ export default function Sidebar() {
             {/* Desktop Sidebar - Fixed width to prevent layout shifts */}
             <motion.aside
                 ref={sidebarRef}
-                className="hidden lg:block fixed left-0 bottom-20 md:bottom-24 z-40"
+                className="hidden lg:block fixed left-0 z-40"
                 initial={false}
                 animate={{
-                    width: isOpen ? 320 : 88,
+                    width: isOpen ? 320 : 80, // Reduced from 88 to 80 for more elegant look
                     top: isVisible ? '6rem' : '1rem', // Add 0.5rem (8px) spacing from header when visible (96px), top-4 (16px) when hidden
+                    bottom: isOpen ? '5rem' : 'auto', // Space for bottom nav when expanded, auto when collapsed
+                    height: isOpen ? 'auto' : 'fit-content', // Auto height when expanded, fit-content when collapsed
                 }}
                 transition={{
                     duration: 0.3,
                     ease: [0.4, 0, 0.2, 1],
                 }}
                 style={{
-                    willChange: 'width, top',
+                    willChange: 'width, top, bottom, height',
+                    overflow: 'visible',
                 }}
             >
                 <motion.div
-                    className="h-full bg-gradient-to-br from-indigo-50/90 via-purple-50/80 to-pink-50/90 backdrop-blur-xl border-r-2 border-indigo-200/60 shadow-2xl overflow-visible relative"
+                    className="bg-gradient-to-br from-white/80 via-indigo-50/70 to-purple-50/80 backdrop-blur-2xl border-r border-white/40 shadow-2xl overflow-visible relative"
                     initial={false}
                     animate={{
-                        borderRadius: isOpen ? '0 2rem 2rem 0' : '0 1.5rem 1.5rem 0',
+                        borderRadius: isOpen ? '0 2rem 2rem 0' : '0 2rem 2rem 0', // Dynamic island style - more rounded
+                        height: isOpen ? '100%' : 'fit-content', // Full height when expanded, fit-content when collapsed
+                        transform: isOpen ? 'none' : 'rotate(-1deg)', // Slight tilt when collapsed for dynamic island effect
                     }}
                     transition={{
                         duration: 0.3,
+                        ease: [0.4, 0, 0.2, 1],
+                    }}
+                    style={{ 
+                        overflow: 'visible',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        backdropFilter: 'blur(30px) saturate(180%)',
+                        WebkitBackdropFilter: 'blur(30px) saturate(180%)',
                     }}
                 >
                     <SidebarContent 

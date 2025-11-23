@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 
 const CLASS_NAMES = ['Half-Ripe', 'Not_Mango', 'OverRipe', 'Ripe', 'Unripe'];
-const MODEL_PATH = '/ml-models/be   st.onnx';
+const MODEL_PATH = '/ml-models/best.onnx';
 const INPUT_SIZE = 640;
 const CONF_THRESHOLD = 0.25;
 

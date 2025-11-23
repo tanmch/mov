@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\ActivityLog;
+use App\Models\Kebun;
+use App\Models\Blok;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -104,6 +106,11 @@ class UserController extends Controller
             'password' => Hash::make($request->password),
             'is_active' => true,
         ]);
+
+        // If new user is K-Petani and current user is also K-Petani, copy kebuns and bloks
+        if ($user->role === 'k-petani' && $currentUser->role === 'k-petani') {
+            $this->copyKebunAndBloks($currentUser, $user);
+        }
 
         // Log activity
         ActivityLog::logActivity(
@@ -243,6 +250,73 @@ class UserController extends Controller
         );
 
         return back()->with('success', "User berhasil di{$action}!");
+    }
+
+    /**
+     * Copy kebuns and bloks from any K-Petani to new K-Petani
+     * All K-Petani should have the same kebuns and bloks
+     */
+    private function copyKebunAndBloks(User $parentKPetani, User $newKPetani): void
+    {
+        // Get kebuns from any K-Petani (prefer parent, but if parent has none, get from first K-Petani)
+        $sourceKebuns = Kebun::whereHas('owner', function($query) {
+            $query->where('role', 'k-petani');
+        })->with('owner')->get();
+        
+        // If parent has kebuns, use those. Otherwise, use kebuns from first K-Petani found
+        $parentKebuns = Kebun::where('owner_id', $parentKPetani->id)->get();
+        
+        if ($parentKebuns->isEmpty() && $sourceKebuns->isNotEmpty()) {
+            // Parent has no kebuns, get from first K-Petani that has kebuns
+            $firstKPetaniWithKebuns = $sourceKebuns->first()->owner;
+            if ($firstKPetaniWithKebuns) {
+                $parentKebuns = Kebun::where('owner_id', $firstKPetaniWithKebuns->id)->get();
+            }
+        }
+
+        foreach ($parentKebuns as $parentKebun) {
+            // Check if kebun with same name already exists for new K-Petani
+            $existingKebun = Kebun::where('owner_id', $newKPetani->id)
+                ->where('name', $parentKebun->name)
+                ->first();
+            
+            if ($existingKebun) {
+                // Kebun already exists, just copy bloks
+                $newKebun = $existingKebun;
+            } else {
+                // Create new kebun for new K-Petani
+                $newKebun = Kebun::create([
+                    'owner_id' => $newKPetani->id,
+                    'name' => $parentKebun->name,
+                    'location' => $parentKebun->location,
+                    'luas' => $parentKebun->luas,
+                    'description' => $parentKebun->description,
+                    'jenis_mangga' => $parentKebun->jenis_mangga ?? 'Gedong', // Default to 'Gedong' if not set
+                    'status' => $parentKebun->status ?? 'active',
+                ]);
+            }
+
+            // Get all bloks from parent kebun
+            $parentBloks = Blok::where('kebun_id', $parentKebun->id)->get();
+
+            foreach ($parentBloks as $parentBlok) {
+                // Check if blok with same code already exists in new kebun
+                $existingBlok = Blok::where('kebun_id', $newKebun->id)
+                    ->where('code', $parentBlok->code)
+                    ->first();
+                
+                if (!$existingBlok) {
+                    // Create new blok for new kebun
+                    Blok::create([
+                        'kebun_id' => $newKebun->id,
+                        'code' => $parentBlok->code,
+                        'name' => $parentBlok->name,
+                        'luas' => $parentBlok->luas ?? 0,
+                        'firebase_path' => null, // New blok doesn't have Firebase path yet
+                    ]);
+                }
+            }
+        }
     }
 }
 
