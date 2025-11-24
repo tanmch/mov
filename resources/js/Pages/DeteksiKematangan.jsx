@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Badge } from '@/Components/ui/badge';
-import { Camera, Upload, Trash2, CheckCircle, Clock, Sparkles, Loader, RefreshCw, X, MapPin, Save } from 'lucide-react';
+import { Camera, Upload, Trash2, CheckCircle, Clock, Sparkles, Loader, RefreshCw, X, MapPin, Save, Settings, Sliders, AlertTriangle } from 'lucide-react';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import AnimatedBackground from '@/Components/AnimatedBackground';
@@ -33,8 +33,22 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
     const [currentDetections, setCurrentDetections] = useState([]);
     const [detectionHistory, setDetectionHistory] = useState(initialHistory || []);
     const [notification, setNotification] = useState(null);
+    const [deleteModal, setDeleteModal] = useState({ isOpen: false, type: null, id: null }); // type: 'single' | 'all'
 
-    const { loadModel, detectFromFile, detectFromImage, isLoading: isModelLoading, isModelLoaded, error: modelError } = useMangoDetection();
+    const { 
+        loadModel, 
+        detectFromFile, 
+        detectFromImage, 
+        isLoading: isModelLoading, 
+        isModelLoaded, 
+        error: modelError,
+        confidenceThreshold,
+        classThresholds,
+        iouThreshold,
+        setConfidenceThreshold,
+        setClassThreshold,
+        setIouThreshold
+    } = useMangoDetection();
 
     useEffect(() => {
         // Load model on mount
@@ -59,6 +73,158 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
         }
     }, [flash]);
 
+    // Helper function to draw bounding boxes and labels on image
+    const drawBoundingBoxesOnImage = async (imageFile, detections) => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    
+                    // Draw original image
+                    ctx.drawImage(img, 0, 0);
+                    
+                    // Filter valid detections
+                    const validDetections = detections.filter(det => 
+                        det.className !== 'Not_Mango' && det.className !== 'Nota_Mango' &&
+                        det.x !== undefined && det.y !== undefined && det.w !== undefined && det.h !== undefined
+                    );
+                    
+                    // Draw bounding boxes and labels
+                    validDetections.forEach((det) => {
+                        const x = det.x;
+                        const y = det.y;
+                        const w = det.w;
+                        const h = det.h;
+                        
+                        // Get color based on maturity - sama seperti di CameraCapture
+                        let color = '#FF6B6B'; // Default: Muda (red)
+                        if (det.maturity >= 75) color = '#FF69B4'; // Matang (pink/magenta) - seperti di gambar
+                        else if (det.maturity >= 50) color = '#FFA07A'; // Setengah Matang (orange)
+                        else if (det.maturity > 0) color = '#FF6B6B'; // Muda (red)
+                        
+                        // Draw bounding box
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = 4;
+                        ctx.setLineDash([]);
+                        ctx.strokeRect(x, y, w, h);
+                        
+                        // Draw label with maturity status
+                        const maturityLabel = getMaturityLabel(det);
+                        const confidenceValue = det.confidence !== undefined ? det.confidence : (det.conf !== undefined ? det.conf : 0);
+                        const confidence = (confidenceValue * 100).toFixed(0);
+                        const label = `${maturityLabel} ${confidence}%`;
+                        
+                        ctx.font = 'bold 18px Arial, sans-serif';
+                        const textMetrics = ctx.measureText(label);
+                        const textWidth = textMetrics.width;
+                        const labelHeight = 30;
+                        const padding = 10;
+                        const spacing = 2;
+                        
+                        // Calculate label position - SELALU di atas bounding box, seperti di kamera
+                        const labelWidth = textWidth + padding * 2;
+                        let labelX = x; // Mulai dari posisi x bounding box
+                        let labelY = y - labelHeight - spacing - 3; // Posisi di ATAS bounding box, sedikit lebih ke atas
+                        
+                        // Hanya pindahkan ke bawah jika BENAR-BENAR tidak muat di atas
+                        if (y < labelHeight) {
+                            // Hanya jika bounding box sudah sangat dekat dengan atas canvas
+                            labelY = y + h + spacing;
+                        } else {
+                            // Jika masih muat di atas, pastikan label tidak keluar dari canvas atas
+                            if (labelY < -5) {
+                                labelY = 0; // Clamp ke 0 jika terlalu keluar
+                            }
+                        }
+                        
+                        // Sesuaikan posisi horizontal jika label terlalu ke kanan
+                        if (labelX + labelWidth > canvas.width) {
+                            labelX = Math.max(0, x + w - labelWidth);
+                            if (labelX + labelWidth > canvas.width) {
+                                labelX = Math.max(0, canvas.width - labelWidth);
+                            }
+                        }
+                        
+                        // Pastikan label tidak terlalu ke kiri
+                        if (labelX < 0) {
+                            labelX = 0;
+                        }
+                        
+                        // Pastikan label dalam bounds vertikal
+                        if (labelY < 0) {
+                            labelY = 0;
+                        }
+                        if (labelY + labelHeight > canvas.height) {
+                            labelY = Math.max(0, canvas.height - labelHeight);
+                        }
+                        
+                        // Draw rounded rectangle background
+                        ctx.fillStyle = color;
+                        ctx.beginPath();
+                        const radius = 6;
+                        const rectX = labelX;
+                        const rectY = labelY;
+                        const rectW = textWidth + padding * 2;
+                        const rectH = labelHeight;
+                        ctx.moveTo(rectX + radius, rectY);
+                        ctx.lineTo(rectX + rectW - radius, rectY);
+                        ctx.quadraticCurveTo(rectX + rectW, rectY, rectX + rectW, rectY + radius);
+                        ctx.lineTo(rectX + rectW, rectY + rectH - radius);
+                        ctx.quadraticCurveTo(rectX + rectW, rectY + rectH, rectX + rectW - radius, rectY + rectH);
+                        ctx.lineTo(rectX + radius, rectY + rectH);
+                        ctx.quadraticCurveTo(rectX, rectY + rectH, rectX, rectY + rectH - radius);
+                        ctx.lineTo(rectX, rectY + radius);
+                        ctx.quadraticCurveTo(rectX, rectY, rectX + radius, rectY);
+                        ctx.closePath();
+                        ctx.fill();
+                        
+                        // Draw label text
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.strokeStyle = '#000000';
+                        ctx.lineWidth = 2;
+                        ctx.textBaseline = 'middle';
+                        ctx.strokeText(label, labelX + padding, labelY + labelHeight / 2);
+                        ctx.fillText(label, labelX + padding, labelY + labelHeight / 2);
+                    });
+                    
+                    // Convert canvas to blob
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            resolve(blob);
+                        } else {
+                            reject(new Error('Failed to create image blob'));
+                        }
+                    }, 'image/jpeg', 0.9);
+                };
+                
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = e.target.result;
+            };
+            
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(imageFile);
+        });
+    };
+
+    // Helper function to get maturity label
+    const getMaturityLabel = (det) => {
+        const statusMap = {
+            'Unripe': 'Muda',
+            'Half-Ripe': 'Setengah Matang',
+            'Ripe': 'Matang',
+            'OverRipe': 'Terlalu Matang',
+            'Not_Mango': 'Bukan Mangga',
+            'Nota_Mango': 'Bukan Mangga'
+        };
+        return statusMap[det.className] || det.status || 'Tidak Diketahui';
+    };
+
     const handleFileSelect = async (file) => {
         if (!file) return;
         
@@ -71,11 +237,14 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
 
         try {
             setIsDetecting(true);
-            setCurrentImage(URL.createObjectURL(file));
             
             const result = await detectFromFile(file);
             
             if (result && result.detections && result.detections.length > 0) {
+                // Draw bounding boxes and labels on image
+                const labeledImageBlob = await drawBoundingBoxesOnImage(file, result.detections);
+                const labeledImageUrl = URL.createObjectURL(labeledImageBlob);
+                
                 // Get the best detection (highest confidence)
                 const bestDetection = result.detections.reduce((best, current) => 
                     current.confidence > best.confidence ? current : best
@@ -83,7 +252,7 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                 
                 const newDetection = {
                     id: Date.now(),
-                    imageUrl: result.imageUrl,
+                    imageUrl: labeledImageUrl, // Use labeled image URL
                     maturity: bestDetection.maturity,
                     status: bestDetection.status,
                     confidence: bestDetection.confidence,
@@ -95,17 +264,19 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                     imageHeight: result.imageHeight,
                 };
                 
+                setCurrentImage(labeledImageUrl); // Set labeled image
                 setCurrentDetections(result.detections);
                 setDetectionHistory([newDetection, ...detectionHistory]);
                 
-                // Store file and detections for saving to database
-                setPendingFile(file);
+                // Store labeled image blob and detections for saving to database
+                const labeledImageFile = new File([labeledImageBlob], file.name, { type: 'image/jpeg' });
+                setPendingFile(labeledImageFile); // Store labeled image file
                 setPendingDetections(result.detections);
                 
                 // Show blok selection modal
                 setShowBlokModal(true);
             } else {
-                alert('Tidak ada mangga yang terdeteksi dalam gambar. Pastikan gambar mengandung buah mangga.');
+                alert('Tidak ada mangga yang terdeteksi dalam gambar. Pastikan gambar terdapat buah mangga.');
             }
         } catch (error) {
             console.error('Detection error:', error);
@@ -147,9 +318,13 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
     };
 
     const handleDeleteDetection = async (id) => {
-        if (!confirm('Yakin ingin menghapus riwayat deteksi ini?')) {
-            return;
-        }
+        // Buka modal konfirmasi
+        setDeleteModal({ isOpen: true, type: 'single', id });
+    };
+
+    const confirmDeleteDetection = async () => {
+        const { id } = deleteModal;
+        if (!id) return;
 
         try {
             const response = await window.axios.delete(route('detections.destroy', id));
@@ -165,17 +340,24 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                 });
                 setTimeout(() => setNotification(null), 3000);
             }
+            setDeleteModal({ isOpen: false, type: null, id: null });
         } catch (error) {
             console.error('Error deleting detection:', error);
-            alert('Gagal menghapus riwayat deteksi');
+            setNotification({
+                type: 'error',
+                message: 'Gagal menghapus riwayat deteksi',
+            });
+            setTimeout(() => setNotification(null), 3000);
+            setDeleteModal({ isOpen: false, type: null, id: null });
         }
     };
 
     const handleDeleteAllDetections = async () => {
-        if (!confirm('Yakin ingin menghapus semua riwayat deteksi?')) {
-            return;
-        }
+        // Buka modal konfirmasi
+        setDeleteModal({ isOpen: true, type: 'all', id: null });
+    };
 
+    const confirmDeleteAllDetections = async () => {
         try {
             const response = await window.axios.delete(route('detections.destroyAll'));
             if (response.data.success) {
@@ -188,22 +370,31 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                 });
                 setTimeout(() => setNotification(null), 3000);
             }
+            setDeleteModal({ isOpen: false, type: null, id: null });
         } catch (error) {
             console.error('Error deleting all detections:', error);
-            alert('Gagal menghapus semua riwayat deteksi');
+            setNotification({
+                type: 'error',
+                message: 'Gagal menghapus semua riwayat deteksi',
+            });
+            setTimeout(() => setNotification(null), 3000);
+            setDeleteModal({ isOpen: false, type: null, id: null });
         }
     };
 
     const handleCameraCapture = async (file, detections) => {
         if (detections && detections.length > 0) {
-            const imageUrl = URL.createObjectURL(file);
+            // Draw bounding boxes and labels on captured image
+            const labeledImageBlob = await drawBoundingBoxesOnImage(file, detections);
+            const labeledImageUrl = URL.createObjectURL(labeledImageBlob);
+            
             const bestDetection = detections.reduce((best, current) => 
                 current.confidence > best.confidence ? current : best
             );
             
             const newDetection = {
                 id: Date.now(),
-                imageUrl: imageUrl,
+                imageUrl: labeledImageUrl, // Use labeled image URL
                 maturity: bestDetection.maturity,
                 status: bestDetection.status,
                 confidence: bestDetection.confidence,
@@ -214,11 +405,12 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
             };
             
             setCurrentDetections(detections);
-            setCurrentImage(imageUrl);
+            setCurrentImage(labeledImageUrl); // Set labeled image
             setDetectionHistory([newDetection, ...detectionHistory]);
             
-            // Store file and detections for saving to database
-            setPendingFile(file);
+            // Store labeled image blob and detections for saving to database
+            const labeledImageFile = new File([labeledImageBlob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
+            setPendingFile(labeledImageFile); // Store labeled image file
             setPendingDetections(detections);
             
             setShowCamera(false);
@@ -295,6 +487,26 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                     message: notificationMessage,
                 });
                 
+                // Get saved detection data from response
+                const savedDetection = response.data.detection;
+                const serverImageUrl = response.data.image_url || savedDetection?.image_url;
+                
+                // Update detection history dengan URL dari server (jika ada)
+                if (serverImageUrl && detectionHistory.length > 0) {
+                    // Update the most recent detection with server URL
+                    const updatedHistory = detectionHistory.map((det, index) => {
+                        if (index === 0 && det.id === Date.now()) { // Most recent temporary detection
+                            return {
+                                ...det,
+                                imageUrl: serverImageUrl, // Gunakan URL dari server
+                                id: savedDetection?.id || det.id, // Gunakan ID dari server jika ada
+                            };
+                        }
+                        return det;
+                    });
+                    setDetectionHistory(updatedHistory);
+                }
+                
                 // Clear pending data
                 setPendingFile(null);
                 setPendingDetections(null);
@@ -306,7 +518,7 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                     setNotification(null);
                 }, 5000);
                 
-                // Reload page to update dashboard after 2 seconds
+                // Reload page to update dashboard and get fresh data from server
                 setTimeout(() => {
                     router.reload({ only: [] });
                 }, 2000);
@@ -368,7 +580,6 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
         return 'bg-gradient-to-r from-orange-500 to-red-500';
     };
 
-    const weekData = [45, 52, 60, 68, 72, 78, 85];
 
     return (
         <AuthenticatedLayout>
@@ -491,50 +702,248 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                         </Card>
                     </motion.div>
 
-                    {/* Current Week Chart */}
+                    {/* Threshold Settings */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2 }}
                     >
-                        <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-yellow-200/50 shadow-xl">
-                            <h3 className="text-lg font-bold text-gray-900 mb-4">Grafik Deteksi Minggu Ini</h3>
-                            <div className="h-48 bg-gradient-to-t from-yellow-100 via-orange-50 to-transparent rounded-xl flex items-end justify-around p-4 mb-4">
-                                {weekData.map((value, i) => (
-                                    <motion.div
-                                        key={i}
-                                        initial={{ height: 0 }}
-                                        animate={{ height: 'auto' }}
-                                        transition={{ delay: i * 0.1, duration: 0.5 }}
-                                        className="flex flex-col items-center gap-2"
-                                    >
-                                        <motion.div
-                                            initial={{ scaleY: 0 }}
-                                            animate={{ scaleY: 1 }}
-                                            transition={{ delay: i * 0.1 + 0.2, duration: 0.5 }}
-                                            className={`w-10 md:w-12 rounded-t-lg shadow-md ${
-                                                value >= 75 ? 'bg-gradient-to-t from-green-500 to-emerald-600' : 
-                                                value >= 50 ? 'bg-gradient-to-t from-yellow-500 to-amber-600' : 
-                                                'bg-gradient-to-t from-orange-500 to-red-600'
-                                            }`}
-                                            style={{ height: `${(value / 100) * 100}%`, minHeight: '20px' }}
-                                        ></motion.div>
-                                        <span className="text-xs font-medium text-gray-600">{value}%</span>
-                                    </motion.div>
-                                ))}
+                        <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-blue-200/50 shadow-xl">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                                    <Sliders className="w-5 h-5 text-white" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900">Pengaturan Akurasi Deteksi</h3>
+                                    <p className="text-xs text-gray-600">Atur threshold sebelum melakukan deteksi</p>
+                                </div>
                             </div>
-                            <div className="flex justify-center gap-6 text-sm">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-green-500 rounded shadow-sm"></div>
-                                    <span className="text-gray-700 font-medium">Matang (&gt;75%)</span>
+                            
+                            <div className="space-y-6">
+                                {/* Threshold Per Kelas */}
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <Label className="text-base font-bold text-gray-900">
+                                            Threshold Confidence Per Kelas
+                                        </Label>
+                                        <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 border-indigo-200">
+                                            {Object.keys(classThresholds || {}).length} kelas
+                                        </Badge>
+                                    </div>
+                                    <p className="text-xs text-gray-600 bg-indigo-50 p-2 rounded-lg border border-indigo-200 mb-4">
+                                        <strong>Penjelasan:</strong> Setiap kelas memiliki threshold sendiri untuk akurasi yang lebih baik. 
+                                        Semakin rendah nilai, semakin sensitif deteksi untuk kelas tersebut.
+                                    </p>
+                                    
+                                    {/* Unripe */}
+                                    {classThresholds && 'Unripe' in classThresholds && (
+                                        <div className="space-y-2 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                                            <div className="flex items-center justify-between">
+                                                <Label htmlFor="threshold-unripe" className="text-sm font-semibold text-orange-700 flex items-center gap-2">
+                                                    <span className="w-3 h-3 rounded-full bg-orange-500"></span>
+                                                    Unripe (Muda)
+                                                </Label>
+                                                <span className="text-sm font-bold text-orange-600 bg-orange-100 px-3 py-1 rounded-lg">
+                                                    {classThresholds.Unripe?.toFixed(2) || '0.15'}
+                                                </span>
+                                            </div>
+                                            <input
+                                                id="threshold-unripe"
+                                                type="range"
+                                                min="0.01"
+                                                max="0.5"
+                                                step="0.01"
+                                                value={classThresholds.Unripe || 0.15}
+                                                onChange={(e) => setClassThreshold('Unripe', parseFloat(e.target.value))}
+                                                className="w-full h-2 bg-gradient-to-r from-orange-200 to-orange-300 rounded-lg appearance-none cursor-pointer slider"
+                                                style={{
+                                                    background: `linear-gradient(to right, #f97316 0%, #f97316 ${((classThresholds.Unripe || 0.15) / 0.5) * 100}%, #fed7aa ${((classThresholds.Unripe || 0.15) / 0.5) * 100}%, #fed7aa 100%)`
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                    
+                                    {/* Half-Ripe */}
+                                    {classThresholds && 'Half-Ripe' in classThresholds && (
+                                        <div className="space-y-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                                            <div className="flex items-center justify-between">
+                                                <Label htmlFor="threshold-half-ripe" className="text-sm font-semibold text-yellow-700 flex items-center gap-2">
+                                                    <span className="w-3 h-3 rounded-full bg-yellow-500"></span>
+                                                    Half-Ripe (Setengah Matang)
+                                                </Label>
+                                                <span className="text-sm font-bold text-yellow-600 bg-yellow-100 px-3 py-1 rounded-lg">
+                                                    {classThresholds['Half-Ripe']?.toFixed(2) || '0.20'}
+                                                </span>
+                                            </div>
+                                            <input
+                                                id="threshold-half-ripe"
+                                                type="range"
+                                                min="0.01"
+                                                max="0.5"
+                                                step="0.01"
+                                                value={classThresholds['Half-Ripe'] || 0.20}
+                                                onChange={(e) => setClassThreshold('Half-Ripe', parseFloat(e.target.value))}
+                                                className="w-full h-2 bg-gradient-to-r from-yellow-200 to-yellow-300 rounded-lg appearance-none cursor-pointer slider"
+                                                style={{
+                                                    background: `linear-gradient(to right, #eab308 0%, #eab308 ${((classThresholds['Half-Ripe'] || 0.20) / 0.5) * 100}%, #fef08a ${((classThresholds['Half-Ripe'] || 0.20) / 0.5) * 100}%, #fef08a 100%)`
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                    
+                                    {/* Ripe */}
+                                    {classThresholds && 'Ripe' in classThresholds && (
+                                        <div className="space-y-2 p-3 bg-green-50 rounded-lg border border-green-200">
+                                            <div className="flex items-center justify-between">
+                                                <Label htmlFor="threshold-ripe" className="text-sm font-semibold text-green-700 flex items-center gap-2">
+                                                    <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                                                    Ripe (Matang)
+                                                </Label>
+                                                <span className="text-sm font-bold text-green-600 bg-green-100 px-3 py-1 rounded-lg">
+                                                    {classThresholds.Ripe?.toFixed(2) || '0.25'}
+                                                </span>
+                                            </div>
+                                            <input
+                                                id="threshold-ripe"
+                                                type="range"
+                                                min="0.01"
+                                                max="0.5"
+                                                step="0.01"
+                                                value={classThresholds.Ripe || 0.25}
+                                                onChange={(e) => setClassThreshold('Ripe', parseFloat(e.target.value))}
+                                                className="w-full h-2 bg-gradient-to-r from-green-200 to-green-300 rounded-lg appearance-none cursor-pointer slider"
+                                                style={{
+                                                    background: `linear-gradient(to right, #22c55e 0%, #22c55e ${((classThresholds.Ripe || 0.25) / 0.5) * 100}%, #bbf7d0 ${((classThresholds.Ripe || 0.25) / 0.5) * 100}%, #bbf7d0 100%)`
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                    
+                                    {/* OverRipe */}
+                                    {classThresholds && 'OverRipe' in classThresholds && (
+                                        <div className="space-y-2 p-3 bg-red-50 rounded-lg border border-red-200">
+                                            <div className="flex items-center justify-between">
+                                                <Label htmlFor="threshold-overripe" className="text-sm font-semibold text-red-700 flex items-center gap-2">
+                                                    <span className="w-3 h-3 rounded-full bg-red-500"></span>
+                                                    OverRipe (Terlalu Matang)
+                                                </Label>
+                                                <span className="text-sm font-bold text-red-600 bg-red-100 px-3 py-1 rounded-lg">
+                                                    {classThresholds.OverRipe?.toFixed(2) || '0.20'}
+                                                </span>
+                                            </div>
+                                            <input
+                                                id="threshold-overripe"
+                                                type="range"
+                                                min="0.01"
+                                                max="0.5"
+                                                step="0.01"
+                                                value={classThresholds.OverRipe || 0.20}
+                                                onChange={(e) => setClassThreshold('OverRipe', parseFloat(e.target.value))}
+                                                className="w-full h-2 bg-gradient-to-r from-red-200 to-red-300 rounded-lg appearance-none cursor-pointer slider"
+                                                style={{
+                                                    background: `linear-gradient(to right, #ef4444 0%, #ef4444 ${((classThresholds.OverRipe || 0.20) / 0.5) * 100}%, #fecaca ${((classThresholds.OverRipe || 0.20) / 0.5) * 100}%, #fecaca 100%)`
+                                                }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-yellow-500 rounded shadow-sm"></div>
-                                    <span className="text-gray-700 font-medium">Setengah (50-75%)</span>
+
+                                {/* IoU Threshold */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="iou-threshold" className="text-sm font-semibold text-gray-700">
+                                            IoU Threshold (Non-Maximum Suppression)
+                                        </Label>
+                                        <span className="text-sm font-bold text-purple-600 bg-purple-100 px-3 py-1 rounded-lg">
+                                            {iouThreshold.toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <input
+                                            id="iou-threshold"
+                                            type="range"
+                                            min="0.1"
+                                            max="0.9"
+                                            step="0.05"
+                                            value={iouThreshold}
+                                            onChange={(e) => setIouThreshold(parseFloat(e.target.value))}
+                                            className="w-full h-2 bg-gradient-to-r from-purple-200 to-pink-200 rounded-lg appearance-none cursor-pointer slider"
+                                            style={{
+                                                background: `linear-gradient(to right, #a855f7 0%, #a855f7 ${((iouThreshold - 0.1) / 0.8) * 100}%, #fce7f3 ${((iouThreshold - 0.1) / 0.8) * 100}%, #fce7f3 100%)`
+                                            }}
+                                        />
+                                        <div className="flex justify-between text-xs text-gray-500">
+                                            <span>0.1 (Lebih Banyak Bbox)</span>
+                                            <span>0.9 (Lebih Sedikit Bbox)</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-gray-600 bg-purple-50 p-2 rounded-lg border border-purple-200">
+                                        <strong>Penjelasan:</strong> Mengontrol penghapusan bounding box yang tumpang tindih. 
+                                        Semakin rendah, semakin banyak bbox yang dipertahankan. Semakin tinggi, hanya bbox terbaik yang dipertahankan.
+                                    </p>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-4 h-4 bg-orange-500 rounded shadow-sm"></div>
-                                    <span className="text-gray-700 font-medium">Muda (&lt;50%)</span>
+
+                                {/* Quick Presets */}
+                                <div className="pt-4 border-t border-gray-200">
+                                    <Label className="text-sm font-semibold text-gray-700 mb-3 block">Preset Cepat (Semua Kelas):</Label>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                setClassThreshold('Unripe', 0.10);
+                                                setClassThreshold('Half-Ripe', 0.15);
+                                                setClassThreshold('Ripe', 0.20);
+                                                setClassThreshold('OverRipe', 0.15);
+                                                setIouThreshold(0.4);
+                                            }}
+                                            className="text-xs border-blue-200 hover:bg-blue-50"
+                                        >
+                                            Sensitif
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                setClassThreshold('Unripe', 0.15);
+                                                setClassThreshold('Half-Ripe', 0.20);
+                                                setClassThreshold('Ripe', 0.25);
+                                                setClassThreshold('OverRipe', 0.20);
+                                                setIouThreshold(0.5);
+                                            }}
+                                            className="text-xs border-green-200 hover:bg-green-50"
+                                        >
+                                            Default
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                setClassThreshold('Unripe', 0.20);
+                                                setClassThreshold('Half-Ripe', 0.25);
+                                                setClassThreshold('Ripe', 0.30);
+                                                setClassThreshold('OverRipe', 0.25);
+                                                setIouThreshold(0.5);
+                                            }}
+                                            className="text-xs border-yellow-200 hover:bg-yellow-50"
+                                        >
+                                            Seimbang
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                setClassThreshold('Unripe', 0.30);
+                                                setClassThreshold('Half-Ripe', 0.35);
+                                                setClassThreshold('Ripe', 0.40);
+                                                setClassThreshold('OverRipe', 0.35);
+                                                setIouThreshold(0.6);
+                                            }}
+                                            className="text-xs border-red-200 hover:bg-red-50"
+                                        >
+                                            Ketat
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         </Card>
@@ -575,70 +984,101 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                                         {detectionHistory.map((result, index) => (
                                             <motion.div
                                                 key={result.id}
-                                                initial={{ opacity: 0, x: -20 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                exit={{ opacity: 0, x: 20 }}
+                                                initial={{ opacity: 0, y: 20 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, y: -20 }}
                                                 transition={{ delay: index * 0.1 }}
-                                                whileHover={{ scale: 1.02, x: 5 }}
+                                                whileHover={{ scale: 1.01, y: -2 }}
                                             >
-                                                <Card className="p-4 border-2 border-gray-200 shadow-md">
-                                                    <div className="flex gap-4">
-                                                        {/* Image Preview */}
-                                                        <motion.div
-                                                            whileHover={{ scale: 1.1, rotate: 5 }}
-                                                            className="w-20 h-20 bg-gradient-to-br from-yellow-200 via-orange-200 to-amber-200 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg overflow-hidden"
-                                                        >
-                                                            {result.imageUrl ? (
-                                                                <img 
-                                                                    src={result.imageUrl} 
-                                                                    alt="Detection result" 
-                                                                    className="w-full h-full object-cover"
-                                                                />
-                                                            ) : (
-                                                                <span className="text-5xl">🥭</span>
-                                                            )}
-                                                        </motion.div>
+                                                <Card className="p-4 sm:p-6 border-2 border-gray-200/50 shadow-xl hover:shadow-2xl transition-all duration-300 bg-gradient-to-br from-white via-gray-50/30 to-white overflow-hidden">
+                                                    {/* Image Preview - gambar di atas dengan bounding box dan label */}
+                                                    <motion.div
+                                                        whileHover={{ scale: 1.02 }}
+                                                        className="w-full mb-4 bg-gradient-to-br from-yellow-100 via-orange-50 to-amber-50 rounded-2xl p-2 sm:p-3 shadow-lg overflow-hidden"
+                                                    >
+                                                        {result.imageUrl ? (
+                                                            <img 
+                                                                src={result.imageUrl} 
+                                                                alt="Detection result dengan labeling" 
+                                                                className="w-full h-auto max-h-96 sm:max-h-[500px] object-contain rounded-xl"
+                                                                title="Gambar dengan bounding box dan label kematangan"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-64 flex items-center justify-center">
+                                                                <span className="text-8xl">🥭</span>
+                                                            </div>
+                                                        )}
+                                                    </motion.div>
 
-                                                        {/* Details */}
-                                                        <div className="flex-1">
-                                                            <div className="flex items-start justify-between mb-3">
-                                                                <div>
-                                                                    <Badge className={`${getMaturityColor(result.maturity)} border-2 mb-2 shadow-sm`}>
-                                                                        {result.status} - {result.maturity}%
-                                                                    </Badge>
-                                                                    <p className="text-sm text-gray-600 flex items-center gap-2">
-                                                                        <Clock className="w-4 h-4" />
-                                                                        {result.timestamp}
-                                                                    </p>
-                                                                </div>
-                                                                <motion.button
-                                                                    whileHover={{ scale: 1.1 }}
-                                                                    whileTap={{ scale: 0.9 }}
-                                                                    onClick={() => handleDeleteDetection(result.id)}
-                                                                    className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                                    {/* Details - keterangan di bawah gambar */}
+                                                    <div className="space-y-4">
+                                                        {/* Header dengan status dan tombol delete */}
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="flex-1">
+                                                                <Badge className={`${getMaturityColor(result.maturity)} border-2 mb-2 shadow-md text-sm sm:text-base px-3 py-1.5`}>
+                                                                    {result.status} - {result.maturity}%
+                                                                </Badge>
+                                                                <p className="text-xs sm:text-sm text-gray-600 flex items-center gap-2 mt-1">
+                                                                    <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                                                    <span className="font-medium">{result.timestamp}</span>
+                                                                </p>
+                                                            </div>
+                                                            <motion.button
+                                                                whileHover={{ scale: 1.1, rotate: 5 }}
+                                                                whileTap={{ scale: 0.9 }}
+                                                                onClick={() => handleDeleteDetection(result.id)}
+                                                                className="p-2 sm:p-2.5 hover:bg-red-50 rounded-xl transition-all duration-200 border border-red-200 hover:border-red-300 shadow-sm hover:shadow-md"
+                                                            >
+                                                                <Trash2 className="w-4 h-4 sm:w-5 sm:h-5 text-red-500" />
+                                                            </motion.button>
+                                                        </div>
+
+                                                        {/* Progress Bar */}
+                                                        <div className="space-y-2">
+                                                            <div className="flex items-center justify-between text-xs sm:text-sm">
+                                                                <span className="font-semibold text-gray-700">Tingkat Kematangan</span>
+                                                                <span className="font-bold text-gray-900">{result.maturity}%</span>
+                                                            </div>
+                                                            <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden shadow-inner border border-gray-300/50">
+                                                                <motion.div
+                                                                    initial={{ width: 0 }}
+                                                                    animate={{ width: `${result.maturity}%` }}
+                                                                    transition={{ duration: 1.5, ease: "easeOut" }}
+                                                                    className={`h-full ${getStatusColor(result.maturity)} rounded-full shadow-md relative overflow-hidden`}
                                                                 >
-                                                                    <Trash2 className="w-5 h-5 text-red-500" />
-                                                                </motion.button>
-                                                            </div>
-
-                                                            {/* Progress Bar */}
-                                                            <div className="mb-3">
-                                                                <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden shadow-inner">
                                                                     <motion.div
-                                                                        initial={{ width: 0 }}
-                                                                        animate={{ width: `${result.maturity}%` }}
-                                                                        transition={{ duration: 1, ease: "easeOut" }}
-                                                                        className={`h-full ${getStatusColor(result.maturity)} rounded-full shadow-sm`}
+                                                                        animate={{ 
+                                                                            backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
+                                                                        }}
+                                                                        transition={{ 
+                                                                            duration: 2, 
+                                                                            repeat: Infinity, 
+                                                                            ease: "linear" 
+                                                                        }}
+                                                                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
                                                                     />
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Recommendation */}
-                                                            <div className="flex items-start gap-2 bg-gradient-to-r from-green-50 to-emerald-50 p-3 rounded-xl border border-green-200">
-                                                                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-                                                                <p className="text-sm text-green-700 font-medium">{result.recommendation}</p>
+                                                                </motion.div>
                                                             </div>
                                                         </div>
+
+                                                        {/* Recommendation */}
+                                                        <motion.div
+                                                            initial={{ opacity: 0 }}
+                                                            animate={{ opacity: 1 }}
+                                                            transition={{ delay: index * 0.1 + 0.3 }}
+                                                            className="flex items-start gap-3 bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 p-4 sm:p-5 rounded-2xl border-2 border-green-200/60 shadow-md hover:shadow-lg transition-shadow duration-300"
+                                                        >
+                                                            <div className="flex-shrink-0">
+                                                                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center shadow-lg">
+                                                                    <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <p className="text-xs sm:text-sm md:text-base text-green-800 font-semibold leading-relaxed">
+                                                                    {result.recommendation}
+                                                                </p>
+                                                            </div>
+                                                        </motion.div>
                                                     </div>
                                                 </Card>
                                             </motion.div>
@@ -739,12 +1179,12 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                                         id="blok"
                                         value={selectedBlokId}
                                         onChange={(e) => setSelectedBlokId(e.target.value)}
-                                        className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
+                                        className="w-full px-3 py-2.5 sm:px-4 sm:py-3 text-sm sm:text-base border-2 border-gray-300 rounded-lg sm:rounded-xl focus:border-green-500 focus:ring-2 sm:focus:ring-4 focus:ring-green-500/20 bg-gradient-to-br from-white to-green-50/30 text-gray-900 font-medium shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23334155%22%20d%3D%22M6%209L1%204h10z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px] sm:bg-[length:12px] bg-[right_8px_center] sm:bg-[right_12px_center] bg-no-repeat pr-8 sm:pr-10"
                                         required
                                     >
-                                        <option value="">Pilih Blok...</option>
+                                        <option value="" className="text-gray-500">Pilih Blok...</option>
                                         {blokOptions.map((blok) => (
-                                            <option key={blok.value} value={blok.value}>
+                                            <option key={blok.value} value={blok.value} className="text-gray-900 bg-white">
                                                 {blok.label}
                                             </option>
                                         ))}
@@ -772,7 +1212,7 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                                             setPendingDetections(null);
                                             setSelectedBlokId('');
                                         }}
-                                        className="flex-1"
+                                        className="flex-1 border-2 border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900 font-medium"
                                     >
                                         Batal
                                     </Button>
@@ -792,6 +1232,99 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                                                 Simpan
                                             </>
                                         )}
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Delete Confirmation Modal */}
+                {deleteModal.isOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Header dengan gradient merah */}
+                            <div className="bg-gradient-to-r from-red-500 via-red-600 to-rose-600 p-6 text-white">
+                                <div className="flex items-center gap-4">
+                                    <motion.div
+                                        animate={{ 
+                                            scale: [1, 1.1, 1],
+                                            rotate: [0, -10, 10, 0]
+                                        }}
+                                        transition={{ 
+                                            duration: 0.5,
+                                            repeat: Infinity,
+                                            repeatDelay: 2
+                                        }}
+                                        className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm"
+                                    >
+                                        <AlertTriangle className="w-8 h-8" />
+                                    </motion.div>
+                                    <div>
+                                        <h3 className="text-xl font-bold">
+                                            {deleteModal.type === 'all' ? 'Hapus Semua Deteksi' : 'Hapus Deteksi'}
+                                        </h3>
+                                        <p className="text-sm text-red-100 mt-1">
+                                            Tindakan ini tidak dapat dibatalkan
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-6">
+                                <div className="mb-6">
+                                    <p className="text-gray-700 text-base leading-relaxed">
+                                        {deleteModal.type === 'all' ? (
+                                            <>
+                                                Apakah Anda yakin ingin menghapus <span className="font-bold text-red-600">semua riwayat deteksi</span>? 
+                                                Semua data yang telah disimpan akan hilang secara permanen.
+                                            </>
+                                        ) : (
+                                            <>
+                                                Apakah Anda yakin ingin menghapus <span className="font-bold text-red-600">riwayat deteksi ini</span>? 
+                                                Data yang telah disimpan akan hilang secara permanen.
+                                            </>
+                                        )}
+                                    </p>
+                                </div>
+
+                                {/* Warning Box */}
+                                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-6">
+                                    <div className="flex items-start gap-3">
+                                        <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-sm font-semibold text-red-800 mb-1">
+                                                Peringatan
+                                            </p>
+                                            <p className="text-xs text-red-700">
+                                                Tindakan ini tidak dapat dibatalkan. Pastikan Anda benar-benar ingin menghapus data ini.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex gap-3">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setDeleteModal({ isOpen: false, type: null, id: null })}
+                                        className="flex-1 border-2 border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900 font-medium py-2.5"
+                                    >
+                                        Batal
+                                    </Button>
+                                    <Button
+                                        onClick={deleteModal.type === 'all' ? confirmDeleteAllDetections : confirmDeleteDetection}
+                                        className="flex-1 bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 text-white font-medium py-2.5 shadow-lg hover:shadow-xl transition-all"
+                                    >
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Ya, Hapus
                                     </Button>
                                 </div>
                             </div>

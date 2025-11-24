@@ -18,7 +18,6 @@ import { ref, onValue, off } from 'firebase/database';
 import AnimatedBackground from '@/Components/AnimatedBackground';
 import { useHeaderOffset } from '@/hooks/useHeaderOffset';
 import { setLocalStorageDebounced, getLocalStorage } from '@/utils/localStorage';
-import BackButton from '@/Components/BackButton';
 
 export default function Dashboard({ robotStatus, maturityData = { average: [], perBlok: [] }, sensorData, trendData, notifications, upcomingSchedules, bloks = [], blokOptions = [], selectedTimeRange: initialTimeRange = '24h', selectedBlokId: initialBlokId = 'average', thresholds = {} }) {
     const { auth } = usePage().props;
@@ -85,6 +84,11 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
     const [toastNotification, setToastNotification] = useState(null); // Only show latest toast
     const previousSensorStatusRef = useRef({}); // Track previous sensor status to detect changes
     const notificationCooldownRef = useRef({}); // Track notification cooldown to prevent spam
+    const [deletedBackendNotifications, setDeletedBackendNotifications] = useState(() => {
+        // Load from localStorage
+        const saved = getLocalStorage('deletedBackendNotifications', []);
+        return saved;
+    });
     
     // Update ref when selectedBlokId changes
     useEffect(() => {
@@ -132,6 +136,7 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
             if (!event.target.closest('.dropdown-container')) {
                 setIsDropdownOpenKondisi(false);
                 setIsDropdownOpenTren(false);
+                setIsDropdownOpenMaturity(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -1086,6 +1091,50 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
         return selected?.label || 'Pilih Blok';
     };
     
+    // Get selected maturity blok label
+    const getSelectedMaturityBlokLabel = () => {
+        if (selectedMaturityBlokId === 'average') {
+            return '📊 Rata-rata Semua Blok';
+        }
+        const selected = enhancedBlokOptions.find(opt => opt.value.toString() === selectedMaturityBlokId.toString());
+        return selected?.label || 'Pilih Blok';
+    };
+    
+    // Get maturity data based on selection (average or per blok)
+    const getMaturityChartData = () => {
+        if (selectedMaturityBlokId === 'average') {
+            return maturityData.average || maturityData || [];
+        }
+        
+        // Find selected blok data - try to match by code first, then by id
+        const selectedBlokData = maturityData.perBlok?.find(blok => {
+            const blokIdStr = selectedMaturityBlokId.toString();
+            return blok.blok_id?.toString() === blokIdStr || 
+                   blok.blok_code === blokIdStr ||
+                   blok.blok_code === selectedBlokId?.toString();
+        });
+        
+        // If not found in perBlok, try to find from bloks array
+        if (!selectedBlokData && bloks.length > 0) {
+            const selectedBlok = bloks.find(b => 
+                b.id?.toString() === selectedMaturityBlokId.toString() ||
+                b.code === selectedMaturityBlokId.toString()
+            );
+            
+            if (selectedBlok) {
+                // Return default data structure if blok found but no maturity data
+                return [
+                    { name: 'Mentah', value: 0, color: '#ef4444' },
+                    { name: 'Hampir Matang', value: 0, color: '#f59e0b' },
+                    { name: 'Matang', value: 0, color: '#22c55e' },
+                    { name: 'Lewat Matang', value: 0, color: '#6b7280' },
+                ];
+            }
+        }
+        
+        return selectedBlokData?.data || maturityData.average || maturityData || [];
+    };
+    
     // Handle time range change (only update state, data filtered from Firebase)
     const handleTimeRangeChange = (range) => {
         setSelectedTimeRange(range);
@@ -1190,11 +1239,6 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                 
                 {/* Content */}
                 <div className="relative z-10 p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
-                    {/* Back Button */}
-                    <div className="mb-4">
-                        <BackButton href="/dashboard" />
-                    </div>
-                    
                     {/* Header dengan Gradient & Animation */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
@@ -1535,22 +1579,88 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
 
                         {/* Grid Layout untuk Desktop */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                            {/* Persentase Kematangan - Enhanced Pie Chart */}
+                            {/* Persentase Kematangan - Enhanced Pie Chart dengan Blok Selection */}
                             <motion.div variants={itemVariants}>
                                 <Card className="p-4 md:p-6 bg-white/50 backdrop-blur-lg border-2 border-purple-200/50 shadow-xl">
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
-                                            <PieChartIcon className="w-5 h-5 text-white" />
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
+                                                <PieChartIcon className="w-5 h-5 text-white" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-bold text-gray-800">Kematangan Buah</h3>
+                                                <p className="text-xs text-gray-500">Per Blok atau Rata-rata</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="text-sm font-bold text-gray-800">Kematangan Buah</h3>
-                                            <p className="text-xs text-gray-500">Rata-rata per Blok</p>
-                                        </div>
+                                        {enhancedBlokOptions.length > 0 && (
+                                            <div className="relative dropdown-container w-full sm:w-auto">
+                                                <motion.button
+                                                    whileHover={{ scale: 1.02 }}
+                                                    whileTap={{ scale: 0.98 }}
+                                                    onClick={() => {
+                                                        setIsDropdownOpenMaturity(!isDropdownOpenMaturity);
+                                                        setIsDropdownOpenKondisi(false);
+                                                        setIsDropdownOpenTren(false);
+                                                    }}
+                                                    className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl shadow-lg hover:shadow-xl transition-all font-medium text-xs w-full sm:min-w-[180px] justify-between"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <PieChartIcon className="w-4 h-4" />
+                                                        <span className="truncate">{getSelectedMaturityBlokLabel()}</span>
+                                                    </div>
+                                                    <motion.div
+                                                        animate={{ rotate: isDropdownOpenMaturity ? 180 : 0 }}
+                                                        transition={{ duration: 0.2 }}
+                                                    >
+                                                        <ChevronDown className="w-4 h-4" />
+                                                    </motion.div>
+                                                </motion.button>
+                                                
+                                                <AnimatePresence>
+                                                    {isDropdownOpenMaturity && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: -10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            exit={{ opacity: 0, y: -10 }}
+                                                            transition={{ duration: 0.2 }}
+                                                            className="absolute right-0 sm:right-0 left-0 sm:left-auto mt-2 w-full sm:w-64 bg-white rounded-xl shadow-2xl border-2 border-gray-100 overflow-hidden z-50"
+                                                        >
+                                                            <div className="max-h-60 overflow-y-auto">
+                                                                {enhancedBlokOptions.map((opt, index) => (
+                                                                    <motion.button
+                                                                        key={opt.value}
+                                                                        initial={{ opacity: 0, x: -20 }}
+                                                                        animate={{ opacity: 1, x: 0 }}
+                                                                        transition={{ delay: index * 0.05 }}
+                                                                        whileHover={{ backgroundColor: '#f3f4f6' }}
+                                                                        onClick={() => {
+                                                                            setSelectedMaturityBlokId(opt.value);
+                                                                            setIsDropdownOpenMaturity(false);
+                                                                        }}
+                                                                        className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-all ${
+                                                                            selectedMaturityBlokId === opt.value 
+                                                                                ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-500' 
+                                                                                : 'hover:bg-gray-50'
+                                                                        }`}
+                                                                    >
+                                                                        <span className="text-lg">{opt.icon}</span>
+                                                                        <span className="text-sm font-medium text-gray-700 flex-1">{opt.label}</span>
+                                                                        {selectedMaturityBlokId === opt.value && (
+                                                                            <CheckCircle2 className="w-4 h-4 text-purple-500" />
+                                                                        )}
+                                                                    </motion.button>
+                                                                ))}
+                                                            </div>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+                                        )}
                                     </div>
                                     <ResponsiveContainer width="100%" height={200}>
                                         <PieChart>
                                             <Pie
-                                                data={maturityData.average || maturityData}
+                                                data={getMaturityChartData()}
                                                 cx="50%"
                                                 cy="50%"
                                                 innerRadius={50}
@@ -1560,7 +1670,7 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                                 label={(entry) => `${entry.value}%`}
                                                 labelStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                                             >
-                                                {(maturityData.average || maturityData).map((entry, index) => (
+                                                {getMaturityChartData().map((entry, index) => (
                                                     <Cell key={`cell-${index}`} fill={entry.color} />
                                                 ))}
                                             </Pie>
@@ -1575,7 +1685,7 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="grid grid-cols-2 gap-2 mt-4">
-                                        {(maturityData.average || maturityData).map((item, index) => (
+                                        {getMaturityChartData().map((item, index) => (
                                             <motion.div
                                                 key={item.name}
                                                 initial={{ opacity: 0, x: -20 }}
@@ -1851,11 +1961,14 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                         // Filter out duplicates by checking if backend notification already exists in realtime
                                         const backendNotifs = (notifications || []).filter(backendNotif => {
                                             // Check if this backend notification doesn't already exist in realtime notifications
-                                            return !realtimeNotifications.some(realtimeNotif => 
+                                            const notInRealtime = !realtimeNotifications.some(realtimeNotif => 
                                                 realtimeNotif.blok === backendNotif.blok && 
                                                 realtimeNotif.sensor === backendNotif.sensor &&
                                                 Math.abs(realtimeNotif.timestamp - (backendNotif.timestamp || 0)) < 60000 // Within 1 minute
                                             );
+                                            // Also check if it's not deleted
+                                            const notDeleted = !deletedBackendNotifications.includes(backendNotif.id);
+                                            return notInRealtime && notDeleted;
                                         });
                                         const allNotifications = [...realtimeNotifications, ...backendNotifs];
                                         
@@ -1865,6 +1978,8 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                                 {allNotifications.map((notif, index) => {
                                                     const isCritical = notif.type === 'critical';
                                                     const isWarning = notif.type === 'warning';
+                                                    const isRealtimeNotif = realtimeNotifications.some(n => n.id === notif.id);
+                                                    const isBackendNotif = backendNotifs.some(n => n.id === notif.id);
                                                     
                                                     return (
                                                         <motion.div
@@ -1916,19 +2031,29 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                                                                     className="w-2 h-2 bg-red-500 rounded-full"
                                                                                 />
                                                                             )}
-                                                                            {/* Only show delete button for real-time notifications */}
-                                                                            {realtimeNotifications.some(n => n.id === notif.id) && (
+                                                                            {/* Show delete button for both real-time and backend notifications */}
+                                                                            {(isRealtimeNotif || isBackendNotif) && (
                                                                                 <button
                                                                                     onClick={(e) => {
                                                                                         e.stopPropagation();
-                                                                                        // Remove notification from real-time notifications
-                                                                                        setRealtimeNotifications(prev => {
-                                                                                            const updated = prev.filter(n => n.id !== notif.id);
-                                                                                            // Save to localStorage
-                                                                                            // Save to localStorage (debounced)
-                                                                                            setLocalStorageDebounced('dashboardNotifications', updated);
-                                                                                            return updated;
-                                                                                        });
+                                                                                        // Check if it's a real-time notification
+                                                                                        if (isRealtimeNotif) {
+                                                                                            // Remove notification from real-time notifications
+                                                                                            setRealtimeNotifications(prev => {
+                                                                                                const updated = prev.filter(n => n.id !== notif.id);
+                                                                                                // Save to localStorage (debounced)
+                                                                                                setLocalStorageDebounced('dashboardNotifications', updated);
+                                                                                                return updated;
+                                                                                            });
+                                                                                        } else if (isBackendNotif) {
+                                                                                            // It's a backend notification - mark as deleted
+                                                                                            setDeletedBackendNotifications(prev => {
+                                                                                                const updated = [...prev, notif.id];
+                                                                                                // Save to localStorage (debounced)
+                                                                                                setLocalStorageDebounced('deletedBackendNotifications', updated);
+                                                                                                return updated;
+                                                                                            });
+                                                                                        }
                                                                                     }}
                                                                                     className="p-1 hover:bg-red-100 rounded-full transition-colors group"
                                                                                     title="Hapus notifikasi"

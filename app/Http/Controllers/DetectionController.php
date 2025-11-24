@@ -22,16 +22,18 @@ class DetectionController extends Controller
     {
         $user = Auth::user();
         
-        // Get bloks for dropdown
-        if ($user->role === 'k-petani') {
-            $bloks = Blok::whereHas('kebun', function($query) use ($user) {
-                $query->where('owner_id', $user->id);
-            })->with('kebun')->get();
-        } else {
-            $bloks = Blok::whereHas('kebun.owner', function($query) {
-                $query->where('role', 'k-petani');
-            })->with('kebun')->get();
-        }
+        // Get bloks for dropdown - semua user (K-petani dan petani) bisa melihat semua blok
+        // Tidak ada filter berdasarkan user, semua blok tersedia untuk semua user
+        // Hapus duplikat berdasarkan code (jika ada blok dengan code yang sama, ambil yang pertama)
+        $bloks = Blok::with('kebun')
+            ->orderBy('code')
+            ->orderBy('name')
+            ->get()
+            ->unique(function($blok) {
+                // Gunakan code sebagai key untuk unique, jika code null gunakan id
+                return $blok->code ?? $blok->id;
+            })
+            ->values(); // Re-index array setelah unique
         
         $blokOptions = $bloks->map(function($blok) {
             return [
@@ -56,9 +58,16 @@ class DetectionController extends Controller
                 ];
                 $status = $bestDetection ? ($statusMap[$bestDetection['className']] ?? $bestDetection['className']) : 'Tidak Diketahui';
                 
+                // Build full image URL - pastikan menggunakan URL lengkap dari storage
+                $imageUrl = $detection->image_url;
+                if ($imageUrl && !str_starts_with($imageUrl, 'http')) {
+                    // Jika relative path, buat full URL menggunakan asset()
+                    $imageUrl = asset('storage/' . str_replace('storage/', '', ltrim($imageUrl, '/')));
+                }
+                
                 return [
                     'id' => $detection->id,
-                    'imageUrl' => $detection->image_url,
+                    'imageUrl' => $imageUrl, // URL lengkap dari server
                     'maturity' => $bestDetection['maturity'] ?? 0,
                     'status' => $status,
                     'confidence' => $detection->confidence_score / 100,
@@ -131,6 +140,8 @@ class DetectionController extends Controller
             // Store image
             $imagePath = $request->file('image')->store('detections', 'public');
             $imageUrl = Storage::url($imagePath);
+            // Pastikan URL lengkap dengan domain untuk response
+            $fullImageUrl = asset('storage/' . str_replace('storage/', '', ltrim($imageUrl, '/')));
 
             // Get best detection (highest confidence)
             $bestDetection = collect($detections)->sortByDesc('confidence')->first();
@@ -199,6 +210,7 @@ class DetectionController extends Controller
                 'success' => true,
                 'message' => $notificationMessage,
                 'detection' => $detectionResult,
+                'image_url' => $fullImageUrl, // URL lengkap dari server
             ]);
         } catch (\Exception $e) {
             \Log::error('Failed to store detection result', [

@@ -27,16 +27,18 @@ class RobotControlController extends Controller
     {
         $user = Auth::user();
         
-        // Get bloks for dropdown (same logic as Dashboard)
-        if ($user->role === 'k-petani') {
-            $bloks = Blok::whereHas('kebun', function($query) use ($user) {
-                $query->where('owner_id', $user->id);
-            })->with('kebun')->get();
-        } else {
-            $bloks = Blok::whereHas('kebun.owner', function($query) {
-                $query->where('role', 'k-petani');
-            })->with('kebun')->get();
-        }
+        // Get bloks for dropdown - semua user (K-petani dan petani) bisa melihat semua blok
+        // Tidak ada filter berdasarkan user, semua blok tersedia untuk semua user
+        // Hapus duplikat berdasarkan code (jika ada blok dengan code yang sama, ambil yang pertama)
+        $bloks = Blok::with('kebun')
+            ->orderBy('code')
+            ->orderBy('name')
+            ->get()
+            ->unique(function($blok) {
+                // Gunakan code sebagai key untuk unique, jika code null gunakan id
+                return $blok->code ?? $blok->id;
+            })
+            ->values(); // Re-index array setelah unique
         
         $bloks = $bloks->map(function($blok) {
             return [

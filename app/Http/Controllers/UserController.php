@@ -86,7 +86,7 @@ class UserController extends Controller
                 Rule::unique('users', 'id_kerja')->whereNull('deleted_at'),
             ],
             'phone' => 'nullable|string|max:20',
-            'role' => 'required|in:guest,petani,k-petani',
+            'role' => 'required|in:petani,k-petani',
             'password' => 'required|min:8|confirmed',
         ]);
 
@@ -107,9 +107,27 @@ class UserController extends Controller
             'is_active' => true,
         ]);
 
-        // If new user is K-Petani and current user is also K-Petani, copy kebuns and bloks
-        if ($user->role === 'k-petani' && $currentUser->role === 'k-petani') {
-            $this->copyKebunAndBloks($currentUser, $user);
+        // If new user is K-Petani, copy kebuns and bloks from any existing K-Petani
+        // This ensures all K-Petani have the same kebuns
+        if ($user->role === 'k-petani') {
+            // Find any existing K-Petani (prefer current user if they are K-Petani)
+            $parentKPetani = null;
+            
+            if ($currentUser->role === 'k-petani' && $currentUser->id !== $user->id) {
+                $parentKPetani = $currentUser;
+            } else {
+                // Find any other K-Petani that exists
+                $parentKPetani = User::where('role', 'k-petani')
+                    ->where('id', '!=', $user->id)
+                    ->first();
+            }
+            
+            // If no parent K-Petani found, use the new user itself (will create default kebun)
+            if (!$parentKPetani) {
+                $parentKPetani = $user;
+            }
+            
+            $this->copyKebunAndBloks($parentKPetani, $user);
         }
 
         // Log activity
@@ -155,7 +173,7 @@ class UserController extends Controller
                 Rule::unique('users', 'id_kerja')->ignore($user->id)->whereNull('deleted_at'),
             ],
             'phone' => 'nullable|string|max:20',
-            'role' => 'required|in:guest,petani,k-petani',
+            'role' => 'required|in:petani,k-petani',
             'password' => 'nullable|min:8|confirmed',
         ]);
 
@@ -259,19 +277,60 @@ class UserController extends Controller
     private function copyKebunAndBloks(User $parentKPetani, User $newKPetani): void
     {
         // Get kebuns from any K-Petani (prefer parent, but if parent has none, get from first K-Petani)
-        $sourceKebuns = Kebun::whereHas('owner', function($query) {
-            $query->where('role', 'k-petani');
+        $sourceKebuns = Kebun::whereHas('owner', function($query) use ($newKPetani) {
+            $query->where('role', 'k-petani')
+                  ->where('id', '!=', $newKPetani->id); // Exclude the new user
         })->with('owner')->get();
         
         // If parent has kebuns, use those. Otherwise, use kebuns from first K-Petani found
-        $parentKebuns = Kebun::where('owner_id', $parentKPetani->id)->get();
+        $parentKebuns = Kebun::where('owner_id', $parentKPetani->id)
+            ->where('owner_id', '!=', $newKPetani->id) // Exclude the new user
+            ->get();
         
         if ($parentKebuns->isEmpty() && $sourceKebuns->isNotEmpty()) {
             // Parent has no kebuns, get from first K-Petani that has kebuns
             $firstKPetaniWithKebuns = $sourceKebuns->first()->owner;
-            if ($firstKPetaniWithKebuns) {
+            if ($firstKPetaniWithKebuns && $firstKPetaniWithKebuns->id !== $newKPetani->id) {
                 $parentKebuns = Kebun::where('owner_id', $firstKPetaniWithKebuns->id)->get();
             }
+        }
+        
+        // If still no kebuns found, create a default kebun for the new K-Petani
+        if ($parentKebuns->isEmpty()) {
+            // Create default kebun
+            $defaultKebun = Kebun::create([
+                'owner_id' => $newKPetani->id,
+                'name' => 'Kebun 1',
+                'location' => 'Cirebon',
+                'luas' => 10.00,
+                'description' => 'Kebun default untuk monitoring',
+                'jenis_mangga' => 'Gedong',
+                'status' => 'active',
+            ]);
+            
+            // Create default bloks
+            $defaultBloks = [
+                ['code' => 'A1', 'name' => 'Blok A1', 'luas' => 2.5],
+                ['code' => 'A2', 'name' => 'Blok A2', 'luas' => 2.5],
+                ['code' => 'B1', 'name' => 'Blok B1', 'luas' => 2.5],
+                ['code' => 'B2', 'name' => 'Blok B2', 'luas' => 2.5],
+                ['code' => 'C1', 'name' => 'Blok C1', 'luas' => 2.5],
+                ['code' => 'C2', 'name' => 'Blok C2', 'luas' => 2.5],
+            ];
+            
+            foreach ($defaultBloks as $blokData) {
+                Blok::create([
+                    'kebun_id' => $defaultKebun->id,
+                    'code' => $blokData['code'],
+                    'name' => $blokData['name'],
+                    'luas' => $blokData['luas'],
+                    'jumlah_pohon' => 20,
+                    'status' => 'sehat',
+                    'firebase_path' => null,
+                ]);
+            }
+            
+            return; // Exit early since we created default kebun
         }
 
         foreach ($parentKebuns as $parentKebun) {

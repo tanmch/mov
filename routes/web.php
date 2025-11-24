@@ -43,9 +43,14 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('PrediksiPanen');
     })->name('prediksi');
     
-    Route::get('/laporan', function () {
-        return Inertia::render('LaporanEkspor');
-    })->name('laporan');
+        Route::get('/laporan', [\App\Http\Controllers\ReportController::class, 'index'])->name('laporan');
+        Route::post('/laporan/generate', [\App\Http\Controllers\ReportController::class, 'generate'])->name('laporan.generate');
+        
+        // Firebase Sync routes (K-petani only)
+        Route::middleware('role:K-petani')->group(function () {
+            Route::post('/firebase/sync', [\App\Http\Controllers\FirebaseSyncController::class, 'syncAll'])->name('firebase.sync');
+            Route::get('/firebase/status', [\App\Http\Controllers\FirebaseSyncController::class, 'getStatus'])->name('firebase.status');
+        });
     
     Route::get('/kebun', [\App\Http\Controllers\KebunController::class, 'index'])->name('kebun');
     
@@ -58,9 +63,14 @@ Route::middleware('auth')->group(function () {
     Route::delete('/detections/{id}', [\App\Http\Controllers\DetectionController::class, 'destroy'])->name('detections.destroy');
     Route::delete('/detections', [\App\Http\Controllers\DetectionController::class, 'destroyAll'])->name('detections.destroyAll');
     
-    Route::get('/customer-service', function () {
-        return Inertia::render('CustomerService');
-    })->name('customer-service');
+    Route::get('/customer-service', [\App\Http\Controllers\ContactInfoController::class, 'index'])->name('customer-service');
+    
+    // Contact Info CRUD (K-Petani only)
+    Route::middleware('role:k-petani')->group(function () {
+        Route::post('/contact-info', [\App\Http\Controllers\ContactInfoController::class, 'store'])->name('contact-info.store');
+        Route::put('/contact-info/{id}', [\App\Http\Controllers\ContactInfoController::class, 'update'])->name('contact-info.update');
+        Route::delete('/contact-info/{id}', [\App\Http\Controllers\ContactInfoController::class, 'destroy'])->name('contact-info.destroy');
+    });
     
     // Robot routes (all authenticated users can view)
     Route::prefix('api/robot')->group(function () {

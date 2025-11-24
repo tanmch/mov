@@ -22,22 +22,59 @@ class KebunController extends Controller
         $user = Auth::user();
         
         // Get kebuns based on user role
+        // All K-Petani and Petani should see the same kebuns (from any K-Petani)
         if ($user->role === 'k-petani') {
-            // K-Petani sees kebuns they own
-            $kebuns = Kebun::where('owner_id', $user->id)
-                ->with(['bloks' => function($query) {
-                    $query->orderBy('code');
-                }])
-                ->get();
-        } else {
-            // Petani sees kebuns owned by K-Petani users
-            $kebuns = Kebun::whereHas('owner', function($query) {
+            // K-Petani sees kebuns from all K-Petani users (including themselves)
+            // This ensures all K-Petani see the same kebuns
+            $allKebuns = Kebun::whereHas('owner', function($query) {
                 $query->where('role', 'k-petani');
             })
             ->with(['bloks' => function($query) {
                 $query->orderBy('code');
             }])
             ->get();
+            
+            // Group kebuns by name and merge their bloks (all K-Petani should have same kebuns)
+            $kebunsGrouped = $allKebuns->groupBy('name');
+            $kebuns = $kebunsGrouped->map(function($kebunsWithSameName) {
+                // Take the first kebun as base
+                $baseKebun = $kebunsWithSameName->first();
+                
+                // Collect all unique bloks from all kebuns with same name
+                $allBloks = $kebunsWithSameName->flatMap->bloks;
+                $uniqueBloks = $allBloks->unique('code')->values();
+                
+                // Manually set the bloks relation
+                $baseKebun->setRelation('bloks', $uniqueBloks);
+                
+                return $baseKebun;
+            })->values();
+        } else {
+            // Petani sees kebuns owned by K-Petani users
+            // Get all kebuns from K-Petani users
+            $allKebuns = Kebun::whereHas('owner', function($query) {
+                $query->where('role', 'k-petani');
+            })
+            ->with(['bloks' => function($query) {
+                $query->orderBy('code');
+            }])
+            ->get();
+            
+            // Group kebuns by name and merge their bloks (all K-Petani should have same kebuns)
+            $kebunsGrouped = $allKebuns->groupBy('name');
+            $kebuns = $kebunsGrouped->map(function($kebunsWithSameName) {
+                // Take the first kebun as base
+                $baseKebun = $kebunsWithSameName->first();
+                
+                // Collect all unique bloks from all kebuns with same name
+                $allBloks = $kebunsWithSameName->flatMap->bloks;
+                $uniqueBloks = $allBloks->unique('code')->values();
+                
+                // Manually set the bloks relation
+                $baseKebun->setRelation('bloks', $uniqueBloks);
+                
+                return $baseKebun;
+            })->values();
         }
         
         // Process kebuns and bloks with sensor data
