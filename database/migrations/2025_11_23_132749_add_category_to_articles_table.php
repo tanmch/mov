@@ -12,10 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('articles', function (Blueprint $table) {
+            $column = $table->string('category', 50)->default('berita');
+
             if (Schema::hasColumn('articles', 'description')) {
-                $table->string('category', 50)->default('berita')->after('description');
-            } else {
-                $table->string('category', 50)->default('berita')->after('title');
+                $column->after('description');
+            } elseif (Schema::hasColumn('articles', 'title')) {
+                $column->after('title');
             }
         });
     }
