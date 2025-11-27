@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -16,10 +16,13 @@ import { LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, Ca
 import { database } from '@/config/firebase';
 import { ref, onValue, off } from 'firebase/database';
 import AnimatedBackground from '@/Components/AnimatedBackground';
+import { useHeaderOffset } from '@/hooks/useHeaderOffset';
+import { setLocalStorageDebounced, getLocalStorage } from '@/utils/localStorage';
 
-export default function Dashboard({ robotStatus, maturityData, sensorData, trendData, notifications, upcomingSchedules, bloks = [], blokOptions = [], selectedTimeRange: initialTimeRange = '24h', selectedBlokId: initialBlokId = 'average', thresholds = {} }) {
+export default function Dashboard({ robotStatus, maturityData = { average: [], perBlok: [] }, sensorData, trendData, notifications, upcomingSchedules, bloks = [], blokOptions = [], selectedTimeRange: initialTimeRange = '24h', selectedBlokId: initialBlokId = 'average', thresholds = {} }) {
     const { auth } = usePage().props;
     const { isKPetani, canEdit, userRole } = useRole();
+    const topOffset = useHeaderOffset();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
     
@@ -34,22 +37,18 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
     // Real-time schedules from Firebase
     const [schedules, setSchedules] = useState(upcomingSchedules || []);
     const [firebaseSchedules, setFirebaseSchedules] = useState({});
+    const [activeMission, setActiveMission] = useState(null); // For manual missions
     
     
-    // Historical trend data from Firebase (24 hours) - with localStorage persistence
+    // Historical trend data from Firebase (24 hours) - with localStorage persistence (optimized)
     const [realtimeTrendData, setRealtimeTrendData] = useState(() => {
-        // Load from localStorage on mount
-        try {
-            const saved = localStorage.getItem('dashboardTrendData');
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                // Filter out old data (older than 24 hours)
-                const now = Date.now();
-                const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
-                return parsed.filter(point => point.timestamp >= twentyFourHoursAgo);
-            }
-        } catch (e) {
-            console.error('Error loading trend data from localStorage:', e);
+        // Load from localStorage on mount using utility
+        const saved = getLocalStorage('dashboardTrendData', []);
+        if (Array.isArray(saved) && saved.length > 0) {
+            // Filter out old data (older than 24 hours)
+            const now = Date.now();
+            const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+            return saved.filter(point => point.timestamp >= twentyFourHoursAgo);
         }
         return [];
     });
@@ -57,29 +56,39 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
     const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
     const [isDropdownOpenKondisi, setIsDropdownOpenKondisi] = useState(false);
     const [isDropdownOpenTren, setIsDropdownOpenTren] = useState(false);
+    const [isDropdownOpenMaturity, setIsDropdownOpenMaturity] = useState(false);
+    const [selectedMaturityBlokId, setSelectedMaturityBlokId] = useState('average');
     const firebaseListenersRef = useRef([]);
     const selectedBlokIdRef = useRef(selectedBlokId); // Ref to track current selected blok
     
-    // Real-time notifications state - with localStorage persistence
+    // State for Firebase-discovered bloks
+    const [firebaseBloks, setFirebaseBloks] = useState([]);
+    const [firebaseBlokOptions, setFirebaseBlokOptions] = useState([]);
+    const [realtimeLastUpdate, setRealtimeLastUpdate] = useState(null);
+    
+    // Ref to store all sensor data persistently across renders
+    const allSensorDataRef = useRef({});
+    
+    // Real-time notifications state - with localStorage persistence (optimized)
     const [realtimeNotifications, setRealtimeNotifications] = useState(() => {
-        // Load from localStorage on mount
-        try {
-            const saved = localStorage.getItem('dashboardNotifications');
-            if (saved) {
-                const parsed = JSON.parse(saved);
-                // Filter out old notifications (older than 7 days)
-                const now = Date.now();
-                const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
-                return parsed.filter(notif => notif.timestamp >= sevenDaysAgo);
-            }
-        } catch (e) {
-            console.error('Error loading notifications from localStorage:', e);
+        // Load from localStorage on mount using utility
+        const saved = getLocalStorage('dashboardNotifications', []);
+        if (Array.isArray(saved) && saved.length > 0) {
+            // Filter out old notifications (older than 7 days)
+            const now = Date.now();
+            const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+            return saved.filter(notif => notif.timestamp >= sevenDaysAgo);
         }
         return [];
     });
     const [toastNotification, setToastNotification] = useState(null); // Only show latest toast
     const previousSensorStatusRef = useRef({}); // Track previous sensor status to detect changes
     const notificationCooldownRef = useRef({}); // Track notification cooldown to prevent spam
+    const [deletedBackendNotifications, setDeletedBackendNotifications] = useState(() => {
+        // Load from localStorage
+        const saved = getLocalStorage('deletedBackendNotifications', []);
+        return saved;
+    });
     
     // Update ref when selectedBlokId changes
     useEffect(() => {
@@ -95,13 +104,24 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
     ];
     
     // Enhanced blok options with average option
-    const enhancedBlokOptions = [
-        { value: 'average', label: '📊 Rata-rata Semua Blok', icon: '📊' },
-        ...blokOptions.map(opt => ({
-            ...opt,
-            icon: '📍'
-        }))
-    ];
+    // Prioritize firebaseBlokOptions if it has more than just "Rata-rata"
+    const enhancedBlokOptions = useMemo(() => {
+        if (firebaseBlokOptions && firebaseBlokOptions.length > 1) {
+            // Use Firebase-discovered bloks
+            return firebaseBlokOptions.map(opt => ({
+                ...opt,
+                icon: opt.value === 'average' ? '📊' : '📍'
+            }));
+        }
+        // Fallback to MySQL bloks
+        return [
+            { value: 'average', label: '📊 Rata-rata Semua Blok', icon: '📊' },
+            ...blokOptions.map(opt => ({
+                ...opt,
+                icon: '📍'
+            }))
+        ];
+    }, [firebaseBlokOptions, blokOptions]);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -116,16 +136,96 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
             if (!event.target.closest('.dropdown-container')) {
                 setIsDropdownOpenKondisi(false);
                 setIsDropdownOpenTren(false);
+                setIsDropdownOpenMaturity(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Discover bloks from Firebase first
+    useEffect(() => {
+        console.log('[Dashboard] Discovering bloks from Firebase...');
+        
+        const kebunIds = [1]; // Can be extended to check multiple kebuns
+        const discoveredBloksMap = new Map(); // Use Map to avoid duplicates
+        
+        kebunIds.forEach(kebunId => {
+            const bloksRef = ref(database, `kebuns/kebun_${kebunId}/bloks`);
+            
+            const discoveryCallback = (snapshot) => {
+                const bloksData = snapshot.val();
+                console.log(`[Dashboard] Discovered bloks from kebun_${kebunId}:`, bloksData);
+                
+                if (bloksData && typeof bloksData === 'object') {
+                    Object.keys(bloksData).forEach(blokCode => {
+                        // Accept ALL bloks that exist in Firebase structure
+                        const blokData = bloksData[blokCode];
+                        if (blokData !== null && blokData !== undefined) {
+                            const key = `${kebunId}_${blokCode}`;
+                            if (!discoveredBloksMap.has(key)) {
+                                discoveredBloksMap.set(key, {
+                                    id: blokCode, // Use code as ID for Firebase-discovered bloks
+                                    code: blokCode,
+                                    kebun_id: kebunId,
+                                    name: blokCode // Default name
+                                });
+                                console.log(`[Dashboard] Added blok ${blokCode} from kebun_${kebunId} to discovered list`);
+                            }
+                        }
+                    });
+                    
+                    // Convert Map to Array
+                    const discoveredBloks = Array.from(discoveredBloksMap.values());
+                    
+                    // Update state with discovered bloks
+                    setFirebaseBloks(discoveredBloks);
+                    
+                    // Generate blokOptions from discovered bloks
+                    const options = [{ value: 'average', label: 'Rata-rata' }];
+                    discoveredBloks.forEach(blok => {
+                        options.push({
+                            value: blok.code, // Use code as value for Firebase bloks
+                            label: blok.code
+                        });
+                    });
+                    setFirebaseBlokOptions(options);
+                    
+                    console.log('[Dashboard] Discovered bloks:', discoveredBloks);
+                    console.log('[Dashboard] Generated firebaseBlokOptions:', options);
+                }
+            };
+            
+            onValue(bloksRef, discoveryCallback, (error) => {
+                if (error) {
+                    console.error(`[Dashboard] Error discovering bloks from kebun_${kebunId}:`, error);
+                } else {
+                    console.log(`[Dashboard] Discovery listener connected for kebun_${kebunId}`);
+                }
+            });
+            
+            firebaseListenersRef.current.push({ ref: bloksRef, callback: discoveryCallback, isDiscoveryListener: true });
+        });
+        
+        // Cleanup function
+        return () => {
+            const discoveryListeners = firebaseListenersRef.current.filter(l => l.isDiscoveryListener);
+            discoveryListeners.forEach(listener => {
+                off(listener.ref, 'value', listener.callback);
+            });
+            firebaseListenersRef.current = firebaseListenersRef.current.filter(l => !l.isDiscoveryListener);
+        };
+    }, []);
+    
+    // Helper function to get sensor unit (memoized)
+    const getSensorUnit = useCallback((sensorType) => {
+        return sensorType === 'suhu_udara' ? '°C' : '%';
+    }, []);
+    
     // Get sensor status helper - synchronized with Monitoring Sensor IoT
     // This function uses the same logic as MonitoringSensor.jsx
-    // Must be defined before Firebase listener to be accessible in callback
-    const calculateStatus = (sensorType, value) => {
+    // Must be defined before Firebase listener to be accessible in callback (memoized)
+    const calculateStatus = useCallback((sensorType, value) => {
         if (!value || value === 0) return 'normal';
         
         const threshold = thresholds[sensorType] || {};
@@ -148,26 +248,41 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
             return 'normal';
         }
         return 'normal';
-    };
+    }, [thresholds]);
 
     // Firebase Real-time Listener for selected blok or average
     useEffect(() => {
-        // Cleanup previous listeners
-        firebaseListenersRef.current.forEach(listener => {
+        console.log('[Dashboard] Firebase listener effect triggered', {
+            bloksCount: bloks.length,
+            firebaseBloksCount: firebaseBloks.length,
+            selectedBlokId
+        });
+
+        // Cleanup previous sensor listeners (but keep discovery listener)
+        const sensorListeners = firebaseListenersRef.current.filter(l => l.isSensorListener);
+        sensorListeners.forEach(listener => {
             off(listener.ref, 'value', listener.callback);
         });
-        firebaseListenersRef.current = [];
+        firebaseListenersRef.current = firebaseListenersRef.current.filter(l => !l.isSensorListener);
         
         // Don't clear trend data - we'll filter by blokId when processing
 
-        if (bloks.length === 0) {
+        // Prioritize firebaseBloks if it has more bloks than MySQL bloks
+        let bloksToUse = firebaseBloks && firebaseBloks.length > 0 ? firebaseBloks : bloks;
+        if (firebaseBloks && firebaseBloks.length > 0 && firebaseBloks.length >= bloks.length) {
+            bloksToUse = firebaseBloks;
+        } else if (bloks && bloks.length > 0) {
+            bloksToUse = bloks;
+        }
+        
+        if (!bloksToUse || bloksToUse.length === 0) {
+            console.warn('[Dashboard] No bloks available from MySQL or Firebase - waiting for Firebase discovery...');
             setIsFirebaseConnected(false);
             return;
         }
 
         // Always listen to all bloks to collect data for both specific blok and average mode
-        // We'll filter the data when processing/displaying
-        const bloksToListen = bloks;
+        const bloksToListen = bloksToUse;
         
         // Store bloksToListen in a way that can be accessed in the callback
         const bloksToListenRef = { current: bloksToListen };
@@ -177,7 +292,6 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
             return;
         }
 
-        const allSensorData = {}; // Store data from all bloks for average calculation
         const activeListeners = new Set();
 
         bloksToListen.forEach(blok => {
@@ -195,8 +309,10 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                     activeListeners.add(blokCode);
                     setIsFirebaseConnected(true);
 
-                    // Store data per blok
-                    allSensorData[blokCode] = {};
+                    // Store data per blok in ref (persistent across renders)
+                    if (!allSensorDataRef.current[blokCode]) {
+                        allSensorDataRef.current[blokCode] = {};
+                    }
 
                     Object.keys(data).forEach(sensorType => {
                         const sensorData = data[sensorType];
@@ -206,9 +322,9 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                             // Calculate status based on thresholds
                             const status = calculateStatus(sensorType, value);
                             
-                            allSensorData[blokCode][sensorType] = {
+                            allSensorDataRef.current[blokCode][sensorType] = {
                                 value: value,
-                                unit: sensorData.unit || (sensorType === 'suhu_udara' ? '°C' : '%'),
+                                unit: sensorData.unit || getSensorUnit(sensorType),
                                 status: status,
                                 timestamp: sensorData.timestamp || Date.now(),
                             };
@@ -299,12 +415,8 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                         // Add new notification at the top (keep only last 50)
                                         const updated = [notification, ...filtered].slice(0, 50);
                                         
-                                        // Save to localStorage
-                                        try {
-                                            localStorage.setItem('dashboardNotifications', JSON.stringify(updated));
-                                        } catch (e) {
-                                            console.error('Error saving notifications to localStorage:', e);
-                                        }
+                                        // Save to localStorage (debounced)
+                                        setLocalStorageDebounced('dashboardNotifications', updated);
                                         
                                         return updated;
                                     });
@@ -330,10 +442,8 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                         }
                     });
 
-                    // Calculate sensor data based on current blok selection (real-time update)
-                    // This function will be called after each blok update
-                    // Use setTimeout to ensure all blok updates are processed before calculating
-                    setTimeout(() => {
+                    // Update sensor display immediately (no setTimeout delay)
+                    const updateSensorDisplay = () => {
                         const currentSelectedBlokId = selectedBlokIdRef.current; // Use ref to get latest value
                         const isAverage = currentSelectedBlokId === 'average';
                         const sensorUpdates = {};
@@ -342,26 +452,19 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                             // Calculate average across all bloks that have data
                             const sensorTypes = ['suhu_udara', 'kelembapan_udara', 'kelembapan_tanah'];
                             sensorTypes.forEach(sensorType => {
-                                const values = Object.values(allSensorData)
-                                    .map(blokData => blokData[sensorType]?.value)
+                                const allValues = Object.keys(allSensorDataRef.current)
+                                    .map(blokCode => allSensorDataRef.current[blokCode]?.[sensorType]?.value)
                                     .filter(v => v !== undefined && v !== null && v !== 0);
                                 
-                                if (values.length > 0) {
-                                    const avgValue = values.reduce((a, b) => a + b, 0) / values.length;
+                                if (allValues.length > 0) {
+                                    const avgValue = parseFloat((allValues.reduce((a, b) => a + b, 0) / allValues.length).toFixed(1));
                                     
                                     // Determine status based on average value
-                                    let status = 'normal';
-                                    if (sensorType === 'suhu_udara') {
-                                        if (avgValue >= 40) status = 'critical';
-                                        else if (avgValue >= 35) status = 'warning';
-                                    } else if (sensorType === 'kelembapan_udara' || sensorType === 'kelembapan_tanah') {
-                                        if (avgValue <= 20) status = 'critical';
-                                        else if (avgValue <= 30) status = 'warning';
-                                    }
+                                    const status = calculateStatus(sensorType, avgValue);
 
                                     sensorUpdates[sensorType] = {
                                         value: avgValue,
-                                        unit: sensorType === 'suhu_udara' ? '°C' : '%',
+                                        unit: getSensorUnit(sensorType),
                                         status: status,
                                         timestamp: Date.now(),
                                     };
@@ -369,37 +472,38 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                             });
                         } else {
                             // Use single blok data - find the selected blok
-                            const selectedBlok = bloksToListenRef.current.find(b => b.id.toString() === currentSelectedBlokId.toString());
-                            const selectedBlokCode = selectedBlok?.code;
+                            // Prioritize firebaseBloks if available
+                            const bloksToUse = (firebaseBloks && firebaseBloks.length > 0) ? firebaseBloks : bloksToListenRef.current;
+                            const selectedBlok = bloksToUse.find(b => 
+                                b.id?.toString() === currentSelectedBlokId.toString() ||
+                                b.code?.toString() === currentSelectedBlokId.toString()
+                            );
+                            const selectedBlokCode = selectedBlok?.code || currentSelectedBlokId; // Fallback to currentSelectedBlokId if blok not found
                             
-                            if (selectedBlokCode && allSensorData[selectedBlokCode]) {
-                                Object.keys(allSensorData[selectedBlokCode] || {}).forEach(sensorType => {
-                                    const sensorData = allSensorData[selectedBlokCode][sensorType];
+                            if (selectedBlokCode && allSensorDataRef.current[selectedBlokCode]) {
+                                Object.keys(allSensorDataRef.current[selectedBlokCode] || {}).forEach(sensorType => {
+                                    const sensorData = allSensorDataRef.current[selectedBlokCode][sensorType];
                                     if (sensorData && sensorData.value !== undefined) {
-                                        let status = 'normal';
-                                        if (sensorType === 'suhu_udara') {
-                                            if (sensorData.value >= 40) status = 'critical';
-                                            else if (sensorData.value >= 35) status = 'warning';
-                                        } else if (sensorType === 'kelembapan_udara' || sensorType === 'kelembapan_tanah') {
-                                            if (sensorData.value <= 20) status = 'critical';
-                                            else if (sensorData.value <= 30) status = 'warning';
-                                        }
                                         sensorUpdates[sensorType] = {
-                                            ...sensorData,
-                                            status: status,
+                                            value: sensorData.value,
+                                            status: sensorData.status,
+                                            unit: getSensorUnit(sensorType),
+                                            timestamp: sensorData.timestamp,
                                         };
                                     }
                                 });
+                            } else {
+                                console.warn(`[Dashboard] No sensor data found for selected blok: ${selectedBlokCode}`);
                             }
                         }
 
                         // Update real-time sensor data for "Kondisi Lingkungan"
-                        // Notifications are now generated directly from Firebase listener above
-                        // This only updates the UI display
-                        if (Object.keys(sensorUpdates).length > 0) {
-                            setRealtimeSensorData(sensorUpdates);
-                        }
-                    }, 100); // Small delay to ensure all blok updates are processed
+                        setRealtimeSensorData(sensorUpdates);
+                        setRealtimeLastUpdate(new Date().toLocaleTimeString());
+                    };
+                    
+                    // Call updateSensorDisplay directly after allSensorDataRef.current is updated
+                    updateSensorDisplay();
 
                     // Build trend data with timestamp (24 jam terakhir) - store per blok
                     // Always store data per blok separately, we'll calculate average when displaying
@@ -411,9 +515,9 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                         time: now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
                         timestamp: timestamp,
                         blokId: blokCode, // Always store with blok code
-                        suhu: allSensorData[blokCode]?.suhu_udara?.value ?? 0,
-                        kelembapan: allSensorData[blokCode]?.kelembapan_udara?.value ?? 0,
-                        kelembapanTanah: allSensorData[blokCode]?.kelembapan_tanah?.value ?? 0,
+                        suhu: allSensorDataRef.current[blokCode]?.suhu_udara?.value ?? 0,
+                        kelembapan: allSensorDataRef.current[blokCode]?.kelembapan_udara?.value ?? 0,
+                        kelembapanTanah: allSensorDataRef.current[blokCode]?.kelembapan_tanah?.value ?? 0,
                     };
                     
                     setRealtimeTrendData(prev => {
@@ -428,12 +532,8 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                             .filter(point => point.timestamp >= twentyFourHoursAgo)
                             .sort((a, b) => a.timestamp - b.timestamp);
                         
-                        // Save to localStorage
-                        try {
-                            localStorage.setItem('dashboardTrendData', JSON.stringify(finalData));
-                        } catch (e) {
-                            console.error('Error saving trend data to localStorage:', e);
-                        }
+                        // Save to localStorage (debounced)
+                        setLocalStorageDebounced('dashboardTrendData', finalData);
                         
                         return finalData;
                     });
@@ -452,16 +552,109 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                     setIsFirebaseConnected(false);
                 }
             });
-            firebaseListenersRef.current.push({ ref: sensorRef, callback });
+            firebaseListenersRef.current.push({ ref: sensorRef, callback, isSensorListener: true });
         });
 
+        // Cleanup function - only cleanup sensor listeners
         return () => {
-            firebaseListenersRef.current.forEach(listener => {
+            const sensorListeners = firebaseListenersRef.current.filter(l => l.isSensorListener);
+            sensorListeners.forEach(listener => {
                 off(listener.ref, 'value', listener.callback);
             });
-            firebaseListenersRef.current = [];
+            firebaseListenersRef.current = firebaseListenersRef.current.filter(l => !l.isSensorListener);
         };
-    }, [selectedBlokId, bloks, selectedTimeRange, thresholds]);
+    }, [bloks, firebaseBloks, selectedTimeRange, thresholds]);
+    
+    // Update sensor display when selectedBlokId changes
+    useEffect(() => {
+        const updateSensorDisplay = () => {
+            const isAverage = selectedBlokId === 'average';
+            const sensorUpdates = {};
+            
+            if (isAverage) {
+                // Calculate average across all bloks that have data
+                const sensorTypes = ['suhu_udara', 'kelembapan_udara', 'kelembapan_tanah'];
+                sensorTypes.forEach(sensorType => {
+                    const allValues = Object.keys(allSensorDataRef.current)
+                        .map(blokCode => allSensorDataRef.current[blokCode]?.[sensorType]?.value)
+                        .filter(v => v !== undefined && v !== null && v !== 0);
+                    
+                    if (allValues.length > 0) {
+                        const avgValue = parseFloat((allValues.reduce((a, b) => a + b, 0) / allValues.length).toFixed(1));
+                        
+                        // Determine status based on average value
+                        const status = calculateStatus(sensorType, avgValue);
+
+                        sensorUpdates[sensorType] = {
+                            value: avgValue,
+                            unit: getSensorUnit(sensorType),
+                            status: status,
+                            timestamp: Date.now(),
+                        };
+                    }
+                });
+            } else {
+                // Use single blok data - find the selected blok
+                // Prioritize firebaseBloks if available
+                const bloksToUse = (firebaseBloks && firebaseBloks.length > 0) ? firebaseBloks : bloks;
+                const selectedBlok = bloksToUse.find(b => 
+                    b.id?.toString() === selectedBlokId.toString() ||
+                    b.code?.toString() === selectedBlokId.toString()
+                );
+                const selectedBlokCode = selectedBlok?.code || selectedBlokId; // Fallback to selectedBlokId if blok not found
+                
+                if (selectedBlokCode && allSensorDataRef.current[selectedBlokCode]) {
+                    Object.keys(allSensorDataRef.current[selectedBlokCode] || {}).forEach(sensorType => {
+                        const sensorData = allSensorDataRef.current[selectedBlokCode][sensorType];
+                        if (sensorData && sensorData.value !== undefined) {
+                            sensorUpdates[sensorType] = {
+                                value: sensorData.value,
+                                status: sensorData.status,
+                                unit: getSensorUnit(sensorType),
+                                timestamp: sensorData.timestamp,
+                            };
+                        }
+                    });
+                } else {
+                    console.warn(`[Dashboard] No Firebase sensor data found for selected blok: ${selectedBlokCode}`);
+                    // Fallback to MySQL data (sensorData prop) if Firebase doesn't have data for this blok
+                    if (sensorData && Object.keys(sensorData).length > 0) {
+                        if (sensorData.suhuUdara !== undefined) {
+                            sensorUpdates.suhu_udara = {
+                                value: sensorData.suhuUdara,
+                                unit: '°C',
+                                status: 'normal',
+                                timestamp: Date.now(),
+                            };
+                        }
+                        if (sensorData.kelembabanUdara !== undefined) {
+                            sensorUpdates.kelembapan_udara = {
+                                value: sensorData.kelembabanUdara,
+                                unit: '%',
+                                status: 'normal',
+                                timestamp: Date.now(),
+                            };
+                        }
+                        if (sensorData.kelembabanTanah !== undefined) {
+                            sensorUpdates.kelembapan_tanah = {
+                                value: sensorData.kelembabanTanah,
+                                unit: '%',
+                                status: 'normal',
+                                timestamp: Date.now(),
+                            };
+                        }
+                    }
+                }
+            }
+
+            // Update real-time sensor data for "Kondisi Lingkungan"
+            setRealtimeSensorData(sensorUpdates);
+            setRealtimeLastUpdate(new Date().toLocaleTimeString());
+        };
+        
+        // Call updateSensorDisplay when selectedBlokId changes
+        updateSensorDisplay();
+    }, [selectedBlokId, bloks, firebaseBloks]);
 
     // Helper function to get mission type label (must be defined before useEffect)
     const getMissionTypeLabel = (type) => {
@@ -493,6 +686,53 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
         // Return status as is
         return { status: statusString, progress: null };
     };
+    
+    // Fetch schedules from API (same as RobotControl)
+    const fetchSchedules = async () => {
+        try {
+            const response = await fetch('/api/robot/schedules?per_page=20', {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.data?.data) {
+                    // Filter out cancelled schedules
+                    const filteredSchedules = data.data.data
+                        .filter(schedule => schedule.status !== 'cancelled')
+                        .map(schedule => ({
+                            id: schedule.id,
+                            blok_id: schedule.blok_id,
+                            blok_code: schedule.blok?.code || null,
+                            blok_name: schedule.blok?.name || null,
+                            mission_type: schedule.mission_type,
+                            description: schedule.description,
+                            scheduled_at: schedule.scheduled_at,
+                            started_at: schedule.started_at,
+                            completed_at: schedule.completed_at,
+                            status: schedule.status,
+                            priority: schedule.priority,
+                            progress_percentage: schedule.progress_percentage || 0,
+                            mission_details: schedule.mission_details,
+                            created_by: schedule.creator?.name || null,
+                        }));
+                    
+                    setSchedules(filteredSchedules);
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching schedules:', error);
+        }
+    };
+    
+    // Fetch schedules on mount
+    useEffect(() => {
+        fetchSchedules();
+    }, []);
     
     // Format date time (same as RobotControl)
     const formatDateTime = (dateString) => {
@@ -601,12 +841,27 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
         const activeMissionCallback = (snapshot) => {
             const data = snapshot.val();
             if (data) {
+                // Store active mission for manual missions
+                setActiveMission({
+                    schedule_id: data.schedule_id || null,
+                    blok_id: data.blok_id || null,
+                    blok_range: data.blok_range || null,
+                    mission_type: data.mission_type || null,
+                    started_at: data.started_at || null,
+                    progress_percentage: data.progress_percentage || 0,
+                    current_task: data.current_task || null,
+                    images_captured: data.images_captured || 0,
+                    total_images: data.total_images || 0,
+                    status: data.status || 'in_progress',
+                });
+                
                 setRealtimeRobotStatus(prev => ({
                     ...prev,
                     misi: data.mission_type ? getMissionTypeLabel(data.mission_type) : null,
                     progress: data.progress_percentage || 0,
                 }));
             } else {
+                setActiveMission(null);
                 setRealtimeRobotStatus(prev => ({
                     ...prev,
                     misi: null,
@@ -702,8 +957,22 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
     const displayedData = getDisplayedSensorData();
     
     // Process trend data from Firebase based on selected time range and blok
+    // Fallback to trendData from props (MySQL) if Firebase data is empty
     const processTrendData = () => {
-        if (realtimeTrendData.length === 0) {
+        // If Firebase data is empty, use MySQL data (trendData prop) as fallback
+        let dataToProcess = realtimeTrendData;
+        if (realtimeTrendData.length === 0 && trendData && trendData.length > 0) {
+            // Convert MySQL trendData format to match Firebase format
+            dataToProcess = trendData.map(point => ({
+                time: point.time,
+                timestamp: new Date(point.time).getTime(), // Approximate timestamp
+                suhu: point.suhu ?? 0,
+                kelembapan: point.kelembapan ?? 0,
+                kelembapanTanah: point.kelembapanTanah ?? 0,
+            }));
+        }
+        
+        if (dataToProcess.length === 0) {
             return [];
         }
 
@@ -718,7 +987,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
         }
 
         // Filter data within selected time range
-        const timeFilteredData = realtimeTrendData.filter(point => point.timestamp >= cutoffTime);
+        const timeFilteredData = dataToProcess.filter(point => point.timestamp >= cutoffTime);
 
         let filteredData = [];
         
@@ -743,7 +1012,15 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
             }));
         } else {
             // For specific blok: filter by blok code
-            const currentBlokCode = bloks.find(b => b.id.toString() === selectedBlokId.toString())?.code || null;
+            // Prioritize firebaseBloks if available
+            const bloksToUse = (firebaseBloks && firebaseBloks.length > 0) ? firebaseBloks : bloks;
+            const currentBlok = bloksToUse.find(b => {
+                const bId = b.id?.toString();
+                const bCode = b.code?.toString();
+                const selected = selectedBlokId.toString();
+                return bId === selected || bCode === selected;
+            });
+            const currentBlokCode = currentBlok?.code || selectedBlokId.toString();
             filteredData = timeFilteredData.filter(point => point.blokId === currentBlokCode);
         }
 
@@ -812,6 +1089,50 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
         }
         const selected = enhancedBlokOptions.find(opt => opt.value.toString() === selectedBlokId.toString());
         return selected?.label || 'Pilih Blok';
+    };
+    
+    // Get selected maturity blok label
+    const getSelectedMaturityBlokLabel = () => {
+        if (selectedMaturityBlokId === 'average') {
+            return '📊 Rata-rata Semua Blok';
+        }
+        const selected = enhancedBlokOptions.find(opt => opt.value.toString() === selectedMaturityBlokId.toString());
+        return selected?.label || 'Pilih Blok';
+    };
+    
+    // Get maturity data based on selection (average or per blok)
+    const getMaturityChartData = () => {
+        if (selectedMaturityBlokId === 'average') {
+            return maturityData.average || maturityData || [];
+        }
+        
+        // Find selected blok data - try to match by code first, then by id
+        const selectedBlokData = maturityData.perBlok?.find(blok => {
+            const blokIdStr = selectedMaturityBlokId.toString();
+            return blok.blok_id?.toString() === blokIdStr || 
+                   blok.blok_code === blokIdStr ||
+                   blok.blok_code === selectedBlokId?.toString();
+        });
+        
+        // If not found in perBlok, try to find from bloks array
+        if (!selectedBlokData && bloks.length > 0) {
+            const selectedBlok = bloks.find(b => 
+                b.id?.toString() === selectedMaturityBlokId.toString() ||
+                b.code === selectedMaturityBlokId.toString()
+            );
+            
+            if (selectedBlok) {
+                // Return default data structure if blok found but no maturity data
+                return [
+                    { name: 'Mentah', value: 0, color: '#ef4444' },
+                    { name: 'Hampir Matang', value: 0, color: '#f59e0b' },
+                    { name: 'Matang', value: 0, color: '#22c55e' },
+                    { name: 'Lewat Matang', value: 0, color: '#6b7280' },
+                ];
+            }
+        }
+        
+        return selectedBlokData?.data || maturityData.average || maturityData || [];
     };
     
     // Handle time range change (only update state, data filtered from Firebase)
@@ -942,13 +1263,13 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                 </div>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                             {/* Info Card dengan Glassmorphism - More Transparent */}
                             <motion.div
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: 0.3 }}
-                                className="bg-white/50 backdrop-blur-lg border border-green-200/40 rounded-2xl shadow-xl px-4 py-3"
+                                className="bg-white/50 backdrop-blur-lg border border-green-200/40 rounded-2xl shadow-xl px-3 sm:px-4 py-2 sm:py-3 w-full sm:w-auto"
                             >
                                 <div className="flex items-center gap-3">
                                     {/* Role Badge */}
@@ -970,7 +1291,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                     </div>
 
                                     {/* Divider */}
-                                    <div className="w-px h-12 bg-gradient-to-b from-transparent via-green-200 to-transparent" />
+                                    <div className="hidden sm:block w-px h-12 bg-gradient-to-b from-transparent via-green-200 to-transparent" />
 
                                     {/* Time & Date */}
                                     <div className="flex flex-col gap-1">
@@ -1088,8 +1409,8 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                 
                                 <div className="relative z-10">
                                     {/* Header Section */}
-                                    <div className="flex items-start justify-between mb-6">
-                                        <div className="flex items-center gap-4">
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+                                        <div className="flex items-center gap-3 sm:gap-4">
                                             <motion.div
                                                 animate={{ 
                                                     scale: realtimeRobotStatus.status === 'aktif' || realtimeRobotStatus.status === 'active' 
@@ -1108,8 +1429,8 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                 }}
                                                 className="relative"
                                             >
-                                                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 via-cyan-400 to-teal-500 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/40 border-2 border-white/40">
-                                                    <Bot className="w-8 h-8 text-white drop-shadow-lg" />
+                                                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-500 via-cyan-400 to-teal-500 rounded-xl sm:rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/40 border-2 border-white/40">
+                                                    <Bot className="w-6 h-6 sm:w-8 sm:h-8 text-white drop-shadow-lg" />
                                                 </div>
                                                 {/* Pulse Ring for Online Status */}
                                                 {realtimeRobotStatus.status === 'idle' && (
@@ -1123,21 +1444,21 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                             repeat: Infinity,
                                                             ease: "easeOut",
                                                         }}
-                                                        className="absolute inset-0 rounded-2xl border-2 border-cyan-400/60"
+                                                        className="absolute inset-0 rounded-xl sm:rounded-2xl border-2 border-cyan-400/60"
                                                     />
                                                 )}
                                             </motion.div>
                                             <div>
-                                                <h3 className="text-xl md:text-2xl font-extrabold text-gray-800 mb-1 drop-shadow-sm">
+                                                <h3 className="text-lg sm:text-xl md:text-2xl font-extrabold text-gray-800 mb-1 drop-shadow-sm">
                                                     {realtimeRobotStatus.nama || 'MOV Bot Alpha'}
                                                 </h3>
-                                                <p className="text-xs md:text-sm text-blue-600 font-medium">Status Robot</p>
+                                                <p className="text-xs sm:text-sm text-blue-600 font-medium">Status Robot</p>
                                             </div>
                                         </div>
                                         <motion.span
                                             whileHover={{ scale: 1.1, rotate: 2 }}
                                             whileTap={{ scale: 0.95 }}
-                                            className={`px-4 py-2 text-sm font-extrabold rounded-full border-2 shadow-xl backdrop-blur-sm ${getStatusColor(realtimeRobotStatus.status)}`}
+                                            className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-extrabold rounded-full border-2 shadow-xl backdrop-blur-sm ${getStatusColor(realtimeRobotStatus.status)}`}
                                         >
                                             {getStatusLabel(realtimeRobotStatus.status)}
                                         </motion.span>
@@ -1258,22 +1579,88 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
 
                         {/* Grid Layout untuk Desktop */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                            {/* Persentase Kematangan - Enhanced Pie Chart */}
+                            {/* Persentase Kematangan - Enhanced Pie Chart dengan Blok Selection */}
                             <motion.div variants={itemVariants}>
                                 <Card className="p-4 md:p-6 bg-white/50 backdrop-blur-lg border-2 border-purple-200/50 shadow-xl">
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
-                                            <PieChartIcon className="w-5 h-5 text-white" />
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
+                                                <PieChartIcon className="w-5 h-5 text-white" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-bold text-gray-800">Kematangan Buah</h3>
+                                                <p className="text-xs text-gray-500">Per Blok atau Rata-rata</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="text-sm font-bold text-gray-800">Kematangan Buah</h3>
-                                            <p className="text-xs text-gray-500">Rata-rata per Blok</p>
-                                        </div>
+                                        {enhancedBlokOptions.length > 0 && (
+                                            <div className="relative dropdown-container w-full sm:w-auto">
+                                                <motion.button
+                                                    whileHover={{ scale: 1.02 }}
+                                                    whileTap={{ scale: 0.98 }}
+                                                    onClick={() => {
+                                                        setIsDropdownOpenMaturity(!isDropdownOpenMaturity);
+                                                        setIsDropdownOpenKondisi(false);
+                                                        setIsDropdownOpenTren(false);
+                                                    }}
+                                                    className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl shadow-lg hover:shadow-xl transition-all font-medium text-xs w-full sm:min-w-[180px] justify-between"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <PieChartIcon className="w-4 h-4" />
+                                                        <span className="truncate">{getSelectedMaturityBlokLabel()}</span>
+                                                    </div>
+                                                    <motion.div
+                                                        animate={{ rotate: isDropdownOpenMaturity ? 180 : 0 }}
+                                                        transition={{ duration: 0.2 }}
+                                                    >
+                                                        <ChevronDown className="w-4 h-4" />
+                                                    </motion.div>
+                                                </motion.button>
+                                                
+                                                <AnimatePresence>
+                                                    {isDropdownOpenMaturity && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: -10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            exit={{ opacity: 0, y: -10 }}
+                                                            transition={{ duration: 0.2 }}
+                                                            className="absolute right-0 sm:right-0 left-0 sm:left-auto mt-2 w-full sm:w-64 bg-white rounded-xl shadow-2xl border-2 border-gray-100 overflow-hidden z-50"
+                                                        >
+                                                            <div className="max-h-60 overflow-y-auto">
+                                                                {enhancedBlokOptions.map((opt, index) => (
+                                                                    <motion.button
+                                                                        key={opt.value}
+                                                                        initial={{ opacity: 0, x: -20 }}
+                                                                        animate={{ opacity: 1, x: 0 }}
+                                                                        transition={{ delay: index * 0.05 }}
+                                                                        whileHover={{ backgroundColor: '#f3f4f6' }}
+                                                                        onClick={() => {
+                                                                            setSelectedMaturityBlokId(opt.value);
+                                                                            setIsDropdownOpenMaturity(false);
+                                                                        }}
+                                                                        className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-all ${
+                                                                            selectedMaturityBlokId === opt.value 
+                                                                                ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-500' 
+                                                                                : 'hover:bg-gray-50'
+                                                                        }`}
+                                                                    >
+                                                                        <span className="text-lg">{opt.icon}</span>
+                                                                        <span className="text-sm font-medium text-gray-700 flex-1">{opt.label}</span>
+                                                                        {selectedMaturityBlokId === opt.value && (
+                                                                            <CheckCircle2 className="w-4 h-4 text-purple-500" />
+                                                                        )}
+                                                                    </motion.button>
+                                                                ))}
+                                                            </div>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+                                        )}
                                     </div>
                                     <ResponsiveContainer width="100%" height={200}>
                                         <PieChart>
                                             <Pie
-                                                data={maturityData}
+                                                data={getMaturityChartData()}
                                                 cx="50%"
                                                 cy="50%"
                                                 innerRadius={50}
@@ -1283,7 +1670,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                 label={(entry) => `${entry.value}%`}
                                                 labelStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                                             >
-                                                {maturityData.map((entry, index) => (
+                                                {getMaturityChartData().map((entry, index) => (
                                                     <Cell key={`cell-${index}`} fill={entry.color} />
                                                 ))}
                                             </Pie>
@@ -1298,7 +1685,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="grid grid-cols-2 gap-2 mt-4">
-                                        {maturityData.map((item, index) => (
+                                        {getMaturityChartData().map((item, index) => (
                                             <motion.div
                                                 key={item.name}
                                                 initial={{ opacity: 0, x: -20 }}
@@ -1316,12 +1703,12 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
 
                             {/* Kondisi Lingkungan - Enhanced dengan Blok Selection */}
                             <motion.div variants={itemVariants} className="space-y-3">
-                                <div className="flex items-center justify-between mb-2">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 mb-2">
                                     <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
                                         <Zap className="w-4 h-4 text-yellow-500" />
                                         Kondisi Lingkungan
                                     </h3>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                                         {isFirebaseConnected && (
                                             <motion.div
                                                 animate={{ scale: [1, 1.2, 1] }}
@@ -1333,7 +1720,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                             </motion.div>
                                         )}
                                         {enhancedBlokOptions.length > 0 && (
-                                            <div className="relative dropdown-container">
+                                            <div className="relative dropdown-container w-full sm:w-auto">
                                                 <motion.button
                                                     whileHover={{ scale: 1.02 }}
                                                     whileTap={{ scale: 0.98 }}
@@ -1341,7 +1728,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                         setIsDropdownOpenKondisi(!isDropdownOpenKondisi);
                                                         setIsDropdownOpenTren(false);
                                                     }}
-                                                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl shadow-lg hover:shadow-xl transition-all font-medium text-xs min-w-[180px] justify-between"
+                                                    className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl shadow-lg hover:shadow-xl transition-all font-medium text-xs w-full sm:min-w-[180px] justify-between"
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         <BarChart3 className="w-4 h-4" />
@@ -1362,7 +1749,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                             animate={{ opacity: 1, y: 0 }}
                                                             exit={{ opacity: 0, y: -10 }}
                                                             transition={{ duration: 0.2 }}
-                                                            className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border-2 border-gray-100 overflow-hidden z-50"
+                                                            className="absolute right-0 sm:right-0 left-0 sm:left-auto mt-2 w-full sm:w-64 bg-white rounded-xl shadow-2xl border-2 border-gray-100 overflow-hidden z-50"
                                                         >
                                                             <div className="max-h-60 overflow-y-auto">
                                                                 {enhancedBlokOptions.map((opt, index) => (
@@ -1541,15 +1928,32 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                 <p className="text-xs text-gray-600 font-medium">Peringatan sensor & sistem</p>
                                             </div>
                                         </div>
-                                        {realtimeNotifications.length > 0 && (
-                                            <motion.div
-                                                initial={{ scale: 0 }}
-                                                animate={{ scale: 1 }}
-                                                className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg"
-                                            >
-                                                <span className="text-xs font-bold text-white">{realtimeNotifications.length}</span>
-                                            </motion.div>
-                                        )}
+                                        <div className="flex items-center gap-2">
+                                            {realtimeNotifications.length > 0 && (
+                                                <>
+                                                    <motion.button
+                                                        whileHover={{ scale: 1.05 }}
+                                                        whileTap={{ scale: 0.95 }}
+                                                        onClick={() => {
+                                                            if (confirm('Yakin ingin menghapus semua notifikasi?')) {
+                                                                setRealtimeNotifications([]);
+                                                                setLocalStorageDebounced('dashboardNotifications', []);
+                                                            }
+                                                        }}
+                                                        className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors"
+                                                    >
+                                                        Hapus Semua
+                                                    </motion.button>
+                                                    <motion.div
+                                                        initial={{ scale: 0 }}
+                                                        animate={{ scale: 1 }}
+                                                        className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg"
+                                                    >
+                                                        <span className="text-xs font-bold text-white">{realtimeNotifications.length}</span>
+                                                    </motion.div>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                     
                                     {(() => {
@@ -1557,11 +1961,14 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                         // Filter out duplicates by checking if backend notification already exists in realtime
                                         const backendNotifs = (notifications || []).filter(backendNotif => {
                                             // Check if this backend notification doesn't already exist in realtime notifications
-                                            return !realtimeNotifications.some(realtimeNotif => 
+                                            const notInRealtime = !realtimeNotifications.some(realtimeNotif => 
                                                 realtimeNotif.blok === backendNotif.blok && 
                                                 realtimeNotif.sensor === backendNotif.sensor &&
                                                 Math.abs(realtimeNotif.timestamp - (backendNotif.timestamp || 0)) < 60000 // Within 1 minute
                                             );
+                                            // Also check if it's not deleted
+                                            const notDeleted = !deletedBackendNotifications.includes(backendNotif.id);
+                                            return notInRealtime && notDeleted;
                                         });
                                         const allNotifications = [...realtimeNotifications, ...backendNotifs];
                                         
@@ -1571,6 +1978,8 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                 {allNotifications.map((notif, index) => {
                                                     const isCritical = notif.type === 'critical';
                                                     const isWarning = notif.type === 'warning';
+                                                    const isRealtimeNotif = realtimeNotifications.some(n => n.id === notif.id);
+                                                    const isBackendNotif = backendNotifs.some(n => n.id === notif.id);
                                                     
                                                     return (
                                                         <motion.div
@@ -1622,22 +2031,29 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                                                     className="w-2 h-2 bg-red-500 rounded-full"
                                                                                 />
                                                                             )}
-                                                                            {/* Only show delete button for real-time notifications */}
-                                                                            {realtimeNotifications.some(n => n.id === notif.id) && (
+                                                                            {/* Show delete button for both real-time and backend notifications */}
+                                                                            {(isRealtimeNotif || isBackendNotif) && (
                                                                                 <button
                                                                                     onClick={(e) => {
                                                                                         e.stopPropagation();
-                                                                                        // Remove notification from real-time notifications
-                                                                                        setRealtimeNotifications(prev => {
-                                                                                            const updated = prev.filter(n => n.id !== notif.id);
-                                                                                            // Save to localStorage
-                                                                                            try {
-                                                                                                localStorage.setItem('dashboardNotifications', JSON.stringify(updated));
-                                                                                            } catch (e) {
-                                                                                                console.error('Error saving notifications to localStorage:', e);
-                                                                                            }
-                                                                                            return updated;
-                                                                                        });
+                                                                                        // Check if it's a real-time notification
+                                                                                        if (isRealtimeNotif) {
+                                                                                            // Remove notification from real-time notifications
+                                                                                            setRealtimeNotifications(prev => {
+                                                                                                const updated = prev.filter(n => n.id !== notif.id);
+                                                                                                // Save to localStorage (debounced)
+                                                                                                setLocalStorageDebounced('dashboardNotifications', updated);
+                                                                                                return updated;
+                                                                                            });
+                                                                                        } else if (isBackendNotif) {
+                                                                                            // It's a backend notification - mark as deleted
+                                                                                            setDeletedBackendNotifications(prev => {
+                                                                                                const updated = [...prev, notif.id];
+                                                                                                // Save to localStorage (debounced)
+                                                                                                setLocalStorageDebounced('deletedBackendNotifications', updated);
+                                                                                                return updated;
+                                                                                            });
+                                                                                        }
                                                                                     }}
                                                                                     className="p-1 hover:bg-red-100 rounded-full transition-colors group"
                                                                                     title="Hapus notifikasi"
@@ -1700,10 +2116,19 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                 <motion.div
                                     key={toastNotification.id}
                                     initial={{ opacity: 0, x: 400, scale: 0.8, y: -20 }}
-                                    animate={{ opacity: 1, x: 0, scale: 1, y: 0 }}
+                                    animate={{ 
+                                        opacity: 1, 
+                                        x: 0, 
+                                        scale: 1, 
+                                        y: 0,
+                                        top: `${topOffset}px`,
+                                    }}
                                     exit={{ opacity: 0, x: 400, scale: 0.8, y: -20 }}
                                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                    className="fixed top-4 right-4 z-[9999] max-w-md w-full md:w-auto"
+                                    style={{
+                                        top: `${topOffset}px`,
+                                    }}
+                                    className="fixed right-2 sm:right-4 left-2 sm:left-auto z-[9999] max-w-md w-auto sm:w-full md:w-auto"
                                 >
                                     <motion.div
                                         className={`p-4 rounded-xl border-2 backdrop-blur-xl shadow-2xl cursor-pointer ${
@@ -1766,7 +2191,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                         {/* Tren Sensor - Enhanced dengan Blok Selection */}
                         <motion.div variants={itemVariants}>
                             <Card className="p-4 md:p-6 bg-white/50 backdrop-blur-lg border-2 border-green-200/50 shadow-xl">
-                                <div className="flex items-center justify-between mb-4">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-4">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
                                             <TrendingUp className="w-5 h-5 text-white" />
@@ -1776,7 +2201,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                             <p className="text-xs text-gray-500">Suhu, Kelembapan Udara & Tanah</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                                         {isFirebaseConnected && (
                                             <motion.div
                                                 animate={{ scale: [1, 1.2, 1] }}
@@ -1788,7 +2213,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                             </motion.div>
                                         )}
                                         {enhancedBlokOptions.length > 0 && (
-                                            <div className="relative dropdown-container">
+                                            <div className="relative dropdown-container w-full sm:w-auto">
                                                 <motion.button
                                                     whileHover={{ scale: 1.02 }}
                                                     whileTap={{ scale: 0.98 }}
@@ -1796,7 +2221,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                         setIsDropdownOpenTren(!isDropdownOpenTren);
                                                         setIsDropdownOpenKondisi(false);
                                                     }}
-                                                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl shadow-lg hover:shadow-xl transition-all font-medium text-xs min-w-[180px] justify-between"
+                                                    className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-xl shadow-lg hover:shadow-xl transition-all font-medium text-xs w-full sm:min-w-[180px] justify-between"
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         <BarChart3 className="w-4 h-4" />
@@ -1817,7 +2242,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                             animate={{ opacity: 1, y: 0 }}
                                                             exit={{ opacity: 0, y: -10 }}
                                                             transition={{ duration: 0.2 }}
-                                                            className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border-2 border-gray-100 overflow-hidden z-50"
+                                                            className="absolute right-0 sm:right-0 left-0 sm:left-auto mt-2 w-full sm:w-64 bg-white rounded-xl shadow-2xl border-2 border-gray-100 overflow-hidden z-50"
                                                         >
                                                             <div className="max-h-60 overflow-y-auto">
                                                                 {enhancedBlokOptions.map((opt, index) => (
@@ -1878,7 +2303,8 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                 </div>
                                 
                                 {displayedTrendData.length > 0 ? (
-                                    <ResponsiveContainer width="100%" height={250}>
+                                    <div className="w-full" style={{ height: '250px' }}>
+                                        <ResponsiveContainer width="100%" height="100%">
                                         <AreaChart data={displayedTrendData}>
                                             <defs>
                                                 <linearGradient id="colorSuhu" x1="0" y1="0" x2="0" y2="1">
@@ -1948,6 +2374,7 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                             )}
                                         </AreaChart>
                                     </ResponsiveContainer>
+                                    </div>
                                 ) : (
                                     <div className="text-center py-8">
                                         <TrendingUp className="w-12 h-12 text-gray-300 mx-auto mb-2" />
@@ -1998,14 +2425,55 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                 progress_percentage: parsedProgress !== null 
                                                     ? parsedProgress 
                                                     : (firebaseData.progress_percentage ?? s.progress_percentage),
+                                                isManual: false, // Scheduled missions
                                             };
                                         }
-                                        return s;
-                                    }).slice(0, 5); // Limit to 5 for dashboard
+                                        return { ...s, isManual: false };
+                                    });
                                     
-                                    return pendingSchedules.length > 0 ? (
+                                    // Add active manual mission to pending schedules if it exists (same as RobotControl)
+                                    const activeManualMission = activeMission && !activeMission.schedule_id && activeMission.mission_type ? (() => {
+                                        const statusStr = activeMission.status;
+                                        const { status: parsedStatus, progress: parsedProgress } = parseStatusAndProgress(statusStr);
+                                        const finalStatus = parsedStatus || statusStr || 'in_progress';
+                                        
+                                        // Only include if not completed
+                                        if (finalStatus === 'completed' || finalStatus === 'done') return null;
+                                        
+                                        // Format blok display
+                                        const blokDisplay = activeMission.blok_range || activeMission.blok_id || 'Tidak diketahui';
+                                        
+                                        return {
+                                            id: `manual_${activeMission.started_at || Date.now()}`,
+                                            blok_id: activeMission.blok_id || null,
+                                            blok_code: activeMission.blok_range || activeMission.blok_id || null,
+                                            blok_name: null,
+                                            mission_type: activeMission.mission_type,
+                                            description: `Misi manual - ${blokDisplay}`,
+                                            scheduled_at: activeMission.started_at ? new Date(activeMission.started_at).toISOString() : new Date().toISOString(),
+                                            started_at: activeMission.started_at ? new Date(activeMission.started_at).toISOString() : null,
+                                            completed_at: null,
+                                            status: finalStatus,
+                                            priority: 'high', // Manual missions are high priority
+                                            progress_percentage: parsedProgress !== null 
+                                                ? parsedProgress 
+                                                : (activeMission.progress_percentage || 0),
+                                            mission_details: {},
+                                            created_by: null,
+                                            isManual: true, // Mark as manual mission
+                                        };
+                                    })() : null;
+                                    
+                                    // Combine pending schedules with active manual mission
+                                    const allPendingSchedules = activeManualMission 
+                                        ? [...pendingSchedules, activeManualMission]
+                                        : pendingSchedules;
+                                    
+                                    const displaySchedules = allPendingSchedules.slice(0, 5); // Limit to 5 for dashboard
+                                    
+                                    return displaySchedules.length > 0 ? (
                                         <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
-                                            {pendingSchedules.map((misi, index) => (
+                                            {displaySchedules.map((misi, index) => (
                                                 <motion.div
                                                     key={misi.id}
                                                     initial={{ opacity: 0, y: 20 }}
@@ -2021,12 +2489,17 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                                                     }`}
                                                 >
                                                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-2">
-                                                        <div className="flex items-center gap-2">
+                                                        <div className="flex items-center gap-2 flex-wrap">
                                                             <span className="text-sm font-bold text-gray-800">
                                                                 {misi.blok_code || misi.blok || `Blok #${misi.blok_id}`}
                                                             </span>
                                                             {misi.blok_name && (
                                                                 <span className="text-xs text-gray-500">- {misi.blok_name}</span>
+                                                            )}
+                                                            {misi.isManual && (
+                                                                <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold">
+                                                                    Manual
+                                                                </span>
                                                             )}
                                                         </div>
                                                         <span className={`text-xs px-3 py-1.5 rounded-full font-bold shadow-md ${getStatusColor(misi.status)}`}>
@@ -2098,82 +2571,6 @@ export default function Dashboard({ robotStatus, maturityData, sensorData, trend
                             </Card>
                         </motion.div>
 
-                        {/* Quick Actions - Enhanced */}
-                        <motion.div variants={itemVariants}>
-                            <Card className="p-4 md:p-6 bg-white/50 backdrop-blur-lg border-2 border-gray-200/50 shadow-xl">
-                                <h3 className="text-sm font-bold text-gray-800 mb-4">Quick Actions</h3>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                    <motion.div
-                                        initial={{ opacity: 0, scale: 0.8 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        transition={{ delay: 0 }}
-                                        whileHover={{ scale: 1.05, y: -5 }}
-                                        whileTap={{ scale: 0.95 }}
-                                    >
-                                        <Link href="/sensor">
-                                            <Button
-                                                variant="outline"
-                                                className="h-20 md:h-24 w-full flex flex-col items-center justify-center gap-2 border-2 border-blue-300 hover:border-blue-400 hover:bg-blue-50 transition-all shadow-md hover:shadow-lg"
-                                            >
-                                                <span className="text-2xl">📊</span>
-                                                <span className="text-xs font-bold text-gray-700">Data Sensor Lengkap</span>
-                                            </Button>
-                                        </Link>
-                                    </motion.div>
-                                    <motion.div
-                                        initial={{ opacity: 0, scale: 0.8 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        transition={{ delay: 0.1 }}
-                                        whileHover={{ scale: 1.05, y: -5 }}
-                                        whileTap={{ scale: 0.95 }}
-                                    >
-                                        <Link href="/robot">
-                                            <Button
-                                                variant="outline"
-                                                className="h-20 md:h-24 w-full flex flex-col items-center justify-center gap-2 border-2 border-green-300 hover:border-green-400 hover:bg-green-50 transition-all shadow-md hover:shadow-lg"
-                                            >
-                                                <span className="text-2xl">🤖</span>
-                                                <span className="text-xs font-bold text-gray-700">Kontrol Robot</span>
-                                            </Button>
-                                        </Link>
-                                    </motion.div>
-                                    <motion.div
-                                        initial={{ opacity: 0, scale: 0.8 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        transition={{ delay: 0.2 }}
-                                        whileHover={{ scale: 1.05, y: -5 }}
-                                        whileTap={{ scale: 0.95 }}
-                                    >
-                                        <Link href="/prediksi">
-                                            <Button
-                                                variant="outline"
-                                                className="h-20 md:h-24 w-full flex flex-col items-center justify-center gap-2 border-2 border-yellow-300 hover:border-yellow-400 hover:bg-yellow-50 transition-all shadow-md hover:shadow-lg"
-                                            >
-                                                <span className="text-2xl">🌾</span>
-                                                <span className="text-xs font-bold text-gray-700">Prediksi Panen</span>
-                                            </Button>
-                                        </Link>
-                                    </motion.div>
-                                    <motion.div
-                                        initial={{ opacity: 0, scale: 0.8 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        transition={{ delay: 0.3 }}
-                                        whileHover={{ scale: 1.05, y: -5 }}
-                                        whileTap={{ scale: 0.95 }}
-                                    >
-                                        <Link href="/laporan">
-                                            <Button
-                                                variant="outline"
-                                                className="h-20 md:h-24 w-full flex flex-col items-center justify-center gap-2 border-2 border-purple-300 hover:border-purple-400 hover:bg-purple-50 transition-all shadow-md hover:shadow-lg"
-                                            >
-                                                <span className="text-2xl">📄</span>
-                                                <span className="text-xs font-bold text-gray-700">Laporan</span>
-                                            </Button>
-                                        </Link>
-                                    </motion.div>
-                    </div>
-                            </Card>
-                        </motion.div>
                     </motion.div>
                 </div>
             </div>

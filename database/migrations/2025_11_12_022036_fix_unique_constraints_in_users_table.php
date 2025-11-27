@@ -54,18 +54,18 @@ return new class extends Migration
         // Add regular indexes for performance (not unique, since we handle uniqueness in Laravel)
         Schema::table('users', function (Blueprint $table) {
             // Only add index if it doesn't exist
-            if (!$this->indexExists('users', 'email')) {
-                $table->index('email');
-            }
-            if (!$this->indexExists('users', 'firebase_uid')) {
-                $table->index('firebase_uid');
-            }
-            if (!$this->indexExists('users', 'username')) {
-                $table->index('username');
-            }
-            if (!$this->indexExists('users', 'id_kerja')) {
-                $table->index('id_kerja');
-            }
+            $maybeAddIndex = function (string $column) use ($table) {
+                $indexName = "users_{$column}_index";
+
+                if (! $this->indexExists('users', $indexName)) {
+                    $table->index($column, $indexName);
+                }
+            };
+
+            $maybeAddIndex('email');
+            $maybeAddIndex('firebase_uid');
+            $maybeAddIndex('username');
+            $maybeAddIndex('id_kerja');
         });
     }
 
@@ -76,26 +76,10 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             // Drop indexes first
-            try {
-                $table->dropIndex(['email']);
-            } catch (\Exception $e) {
-                // Ignore if doesn't exist
-            }
-            try {
-                $table->dropIndex(['firebase_uid']);
-            } catch (\Exception $e) {
-                // Ignore if doesn't exist
-            }
-            try {
-                $table->dropIndex(['username']);
-            } catch (\Exception $e) {
-                // Ignore if doesn't exist
-            }
-            try {
-                $table->dropIndex(['id_kerja']);
-            } catch (\Exception $e) {
-                // Ignore if doesn't exist
-            }
+            $this->maybeDropIndex($table, 'users_email_index');
+            $this->maybeDropIndex($table, 'users_firebase_uid_index');
+            $this->maybeDropIndex($table, 'users_username_index');
+            $this->maybeDropIndex($table, 'users_id_kerja_index');
             
             // Re-add unique constraints
             $table->unique('email');
@@ -122,6 +106,13 @@ return new class extends Migration
             [$databaseName, $table, $index]
         );
         
-        return $result[0]->count > 0;
+        return isset($result[0]) && (int) $result[0]->count > 0;
+    }
+
+    private function maybeDropIndex(Blueprint $table, string $indexName): void
+    {
+        if ($this->indexExists('users', $indexName)) {
+            $table->dropIndex($indexName);
+        }
     }
 };

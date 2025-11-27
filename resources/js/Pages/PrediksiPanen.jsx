@@ -1,35 +1,57 @@
+import { useState, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, usePage } from '@inertiajs/react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/Components/ui/card';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
-import { Calendar, TrendingUp, Package, FileText, Sun, Cloud } from 'lucide-react';
+import { Calendar, TrendingUp, Package, FileText, Sun, Cloud, AlertCircle, RefreshCw } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
+import SkeletonLoader, { SkeletonCard, SkeletonChart } from '@/Components/ui/SkeletonLoader';
+import EmptyState from '@/Components/ui/EmptyState';
+import BackButton from '@/Components/BackButton';
 
 export default function PrediksiPanen() {
     const { auth } = usePage().props;
     const userRole = auth?.user?.role;
-    const predictionData = {
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [predictionData, setPredictionData] = useState({
         estimatedDate: '15-20 November 2025',
         daysLeft: 18,
         totalFruit: 850,
         qualityScore: 92,
         expectedYield: '2.5 ton',
-    };
+    });
 
-    const blockPredictions = [
+    const [blockPredictions, setBlockPredictions] = useState([
         { block: 'C2', readiness: 95, fruits: 120, harvestDate: '2-3 hari', quality: 'Sangat Baik' },
         { block: 'C3', readiness: 92, fruits: 115, harvestDate: '3-4 hari', quality: 'Sangat Baik' },
         { block: 'A1', readiness: 78, fruits: 130, harvestDate: '7-10 hari', quality: 'Baik' },
         { block: 'B2', readiness: 72, fruits: 125, harvestDate: '10-12 hari', quality: 'Baik' },
         { block: 'A2', readiness: 65, fruits: 135, harvestDate: '15-18 hari', quality: 'Sedang' },
-    ];
+    ]);
 
-    const weekTrend = [65, 70, 74, 78, 82, 86, 90];
+    const [weekTrend, setWeekTrend] = useState([65, 70, 74, 78, 82, 86, 90]);
+
+    useEffect(() => {
+        // Simulate loading
+        const timer = setTimeout(() => {
+            setIsLoading(false);
+        }, 1500);
+        return () => clearTimeout(timer);
+    }, []);
 
     const handleSendReport = () => {
         // Toast akan ditambahkan nanti
+    };
+
+    const handleRefresh = () => {
+        setIsLoading(true);
+        setError(null);
+        setTimeout(() => {
+            setIsLoading(false);
+        }, 1500);
     };
 
     const getReadinessColor = (readiness) => {
@@ -45,23 +67,85 @@ export default function PrediksiPanen() {
             <div className="min-h-screen relative overflow-hidden">
                 <AnimatedBackground />
                 <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                    {/* Back Button */}
+                    <div className="mb-4">
+                        <BackButton href="/dashboard" />
+                    </div>
+                    
                     {/* Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-3 mb-6"
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6"
                     >
-                        <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <TrendingUp className="w-6 h-6 text-white" />
+                        <div className="flex items-center gap-3">
+                            <motion.div
+                                animate={{ rotate: [0, 5, -5, 0] }}
+                                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                                className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg"
+                            >
+                                <TrendingUp className="w-6 h-6 text-white" />
+                            </motion.div>
+                            <div>
+                                <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                                    Prediksi Panen 📊
+                                </h1>
+                                <p className="text-sm text-gray-600">Estimasi waktu panen optimal berdasarkan AI</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                                Prediksi Panen 📊
-                            </h1>
-                            <p className="text-sm text-gray-600">Estimasi waktu panen optimal berdasarkan AI</p>
-                        </div>
+                        <Button
+                            onClick={handleRefresh}
+                            variant="outline"
+                            size="sm"
+                            disabled={isLoading}
+                            className="flex items-center gap-2"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                            Refresh
+                        </Button>
                     </motion.div>
 
+                    {/* Error State */}
+                    <AnimatePresence>
+                        {error && (
+                            <motion.div
+                                initial={{ opacity: 0, y: -20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -20 }}
+                                className="p-4 bg-red-50 border-2 border-red-200 rounded-xl flex items-center gap-3"
+                            >
+                                <AlertCircle className="w-5 h-5 text-red-600" />
+                                <p className="text-red-800 font-medium">{error}</p>
+                                <Button
+                                    onClick={() => setError(null)}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="ml-auto"
+                                >
+                                    Tutup
+                                </Button>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Loading State */}
+                    {isLoading ? (
+                        <div className="space-y-6">
+                            <SkeletonCard />
+                            <SkeletonCard />
+                            <SkeletonChart />
+                            <SkeletonLoader type="list" count={5} />
+                        </div>
+                    ) : blockPredictions.length === 0 ? (
+                        <EmptyState
+                            icon="📊"
+                            title="Belum Ada Data Prediksi"
+                            message="Data prediksi panen akan muncul setelah ada data deteksi kematangan dari robot."
+                            actionLabel="Refresh Data"
+                            onAction={handleRefresh}
+                        />
+                    ) : (
+                        <>
                     {/* Main Prediction Card */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
@@ -312,6 +396,8 @@ export default function PrediksiPanen() {
                             </ul>
                         </Card>
                     </motion.div>
+                        </>
+                    )}
                 </div>
             </div>
         </AuthenticatedLayout>

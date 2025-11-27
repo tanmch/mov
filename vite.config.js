@@ -16,4 +16,12 @@ export default defineConfig({
             '@': path.resolve(__dirname, 'resources/js'),
         },
     },
+    optimizeDeps: {
+        exclude: ['onnxruntime-web'],
+    },
+    server: {
+        fs: {
+            allow: ['..'],
+        },
+    },
 });

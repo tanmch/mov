@@ -4,8 +4,9 @@ import { Card } from '@/Components/ui/card';
 import { Badge } from '@/Components/ui/badge';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
-import { Search, BookOpen, TrendingUp, Lightbulb, Eye, Clock, LogIn, UserPlus } from 'lucide-react';
+import { Search, BookOpen, TrendingUp, Lightbulb, Eye, Clock, LogIn, UserPlus, ExternalLink } from 'lucide-react';
 import ApplicationLogo from '@/Components/ApplicationLogo';
+import AnimatedBackground from '@/Components/AnimatedBackground';
 import { useState } from 'react';
 
 export default function Welcome({ canLogin, canRegister }) {
@@ -15,6 +16,7 @@ export default function Welcome({ canLogin, canRegister }) {
 
     const categories = [
         { id: 'semua', label: 'Semua', icon: '📚' },
+        { id: 'berita', label: 'Berita Mangga', icon: '📰' },
         { id: 'tips', label: 'Tips Pertanian', icon: '💡' },
         { id: 'teknologi', label: 'Teknologi', icon: '🤖' },
         { id: 'jenis-mangga', label: 'Jenis Mangga', icon: '🥭' },
@@ -23,64 +25,132 @@ export default function Welcome({ canLogin, canRegister }) {
 
     const articles = [
         {
-            id: 1,
+            id: 'manfaat-mangga-1',
+            title: 'Manfaat Mangga: Buah Favorit Sejuta Umat dengan Segudang Khasiat',
+            category: 'tips',
+            excerpt: 'Mangga kaya akan vitamin C, A, E, beta-karoten, dan antioksidan yang membantu memperkuat sistem imun, menjaga kesehatan mata, pencernaan, kulit, dan jantung. Pelajari manfaat lengkap buah tropis ini...',
+            image: '🥭',
+            date: '25 Nov 2025',
+            readTime: '8 min',
+            views: 5234,
+            source: 'Digitani IPB',
+            externalUrl: 'https://digitani.ipb.ac.id/manfaat-mangga-buah-favorit-sejuta-umat/'
+        },
+        {
+            id: 'manfaat-mangga-2',
+            title: 'Manfaat Buah Mangga untuk Kesehatan: Penelitian dan Bukti Ilmiah',
+            category: 'tips',
+            excerpt: 'Temukan penelitian ilmiah tentang manfaat mangga bagi kesehatan, termasuk kandungan nutrisi, antioksidan, efek anti-inflamasi, dan potensi pencegahan penyakit degeneratif berdasarkan jurnal penelitian...',
+            image: '📊',
+            date: '25 Nov 2025',
+            readTime: '10 min',
+            views: 4123,
+            source: 'Ciputra Hospital',
+            externalUrl: 'https://ciputrahospital.com/manfaat-buah-mangga/'
+        },
+        {
+            id: 'jurnal-mangga-ffhd',
+            title: 'Penelitian Jurnal: Kandungan Nutrisi dan Manfaat Kesehatan Mangga',
+            category: 'tips',
+            excerpt: 'Review penelitian jurnal tentang kandungan nutrisi mangga, senyawa bioaktif, antioksidan, dan manfaat kesehatan berdasarkan studi ilmiah terkini. Pelajari bukti-bukti penelitian tentang efek mangga pada kesehatan...',
+            image: '📚',
+            date: '24 Nov 2025',
+            readTime: '12 min',
+            views: 2890,
+            source: 'FFHD Journal',
+            externalUrl: 'https://ffhdj.com/index.php/ffhd/article/view/526'
+        },
+        {
+            id: 'mangga-indramayu-1',
+            title: 'Mangga Indramayu: Jenis, Ciri-ciri, dan Karakteristik Unggulan',
+            category: 'jenis-mangga',
+            excerpt: 'Indramayu dikenal sebagai "Kota Mangga" dengan varietas unggulan seperti Cengkir dan Gedong Gincu. Kenali ciri khas, karakteristik, dan keunggulan masing-masing jenis mangga Indramayu...',
+            image: '🏆',
+            date: '24 Nov 2025',
+            readTime: '7 min',
+            views: 4532,
+            source: 'Halodoc & Detik Jabar',
+            externalUrl: 'https://www.halodoc.com/artikel/mangga-indramayu-manisnya-jenis-dan-keunggulannya'
+        },
+        {
+            id: 'tanam-bibit-indramayu',
+            title: 'Panduan Lengkap Cara Menanam Bibit Mangga Indramayu',
+            category: 'perawatan',
+            excerpt: 'Pelajari langkah-langkah menanam bibit mangga Indramayu mulai dari pemilihan bibit, persiapan lahan, teknik penanaman, hingga perawatan harian untuk hasil panen optimal...',
+            image: '🌱',
+            date: '23 Nov 2025',
+            readTime: '6 min',
+            views: 3876,
+            source: 'Agrotanaman',
+            externalUrl: 'https://www.agrotanaman.com/p/cara-menanam-bibit-mangga-indramayu.html'
+        },
+        {
+            id: 'budidaya-irwin-polybag',
+            title: 'Cara Budidaya Mangga Irwin di Polybag untuk Pemula',
+            category: 'perawatan',
+            excerpt: 'Teknik budidaya mangga Irwin menggunakan polybag cocok untuk lahan terbatas. Pelajari cara pemilihan bibit, media tanam, penyiraman, pemupukan, dan perawatan hingga berbuah...',
+            image: '🪴',
+            date: '22 Nov 2025',
+            readTime: '9 min',
+            views: 3421,
+            source: 'Pertanian77',
+            externalUrl: 'https://www.pertanian77.com/2018/08/cara-budidaya-mangga-irwin-di-polybag.html'
+        },
+        {
+            id: 'agrimania-bundar',
+            title: 'Merawat Agrimania: Si Bundar Berharga Mahal dari Kota Mangga',
+            category: 'jenis-mangga',
+            excerpt: 'Agrimania adalah varietas mangga premium dengan bentuk bundar sempurna dan harga yang tinggi. Pelajari karakteristik, teknik perawatan, dan tips budidaya untuk menghasilkan buah berkualitas ekspor...',
+            image: '💎',
+            date: '21 Nov 2025',
+            readTime: '8 min',
+            views: 2156,
+            source: 'Republika Jabar',
+            externalUrl: 'https://rejabar.republika.co.id/berita/r1hmvu327/merawat-agrimania-si-bundar-berharga-mahal-dari-kota-mangga'
+        },
+        {
+            id: 'deteksi-kematangan',
             title: 'Cara Mendeteksi Kematangan Mangga dengan Akurat',
             category: 'tips',
             excerpt: 'Pelajari teknik-teknik modern untuk mengetahui tingkat kematangan buah mangga menggunakan AI dan metode tradisional...',
-            image: '🥭',
-            date: '28 Okt 2025',
+            image: '🔍',
+            date: '20 Nov 2025',
             readTime: '5 min',
-            views: 1234,
+            views: 1876,
+            source: 'MOV Platform',
         },
         {
-            id: 2,
+            id: 'teknologi-iot',
             title: 'Teknologi IoT untuk Pertanian Modern',
             category: 'teknologi',
             excerpt: 'Bagaimana sensor IoT dapat membantu meningkatkan produktivitas kebun mangga dengan monitoring real-time...',
             image: '🤖',
-            date: '27 Okt 2025',
+            date: '19 Nov 2025',
             readTime: '7 min',
-            views: 2156,
+            views: 2543,
+            source: 'MOV Platform',
         },
         {
-            id: 3,
-            title: '10 Jenis Mangga Unggulan Indonesia',
-            category: 'jenis-mangga',
-            excerpt: 'Kenali berbagai varietas mangga lokal yang memiliki kualitas ekspor dan cara membedakannya...',
-            image: '🍋',
-            date: '26 Okt 2025',
-            readTime: '8 min',
-            views: 3421,
-        },
-        {
-            id: 4,
+            id: 'penyiraman-optimal',
             title: 'Jadwal Penyiraman Optimal untuk Mangga',
             category: 'perawatan',
             excerpt: 'Tentukan waktu dan volume penyiraman yang tepat untuk hasil maksimal berdasarkan kondisi cuaca...',
             image: '💧',
-            date: '25 Okt 2025',
+            date: '18 Nov 2025',
             readTime: '6 min',
-            views: 1876,
+            views: 1234,
+            source: 'MOV Platform',
         },
         {
-            id: 5,
+            id: 'atasi-hama',
             title: 'Mengatasi Hama pada Pohon Mangga',
             category: 'perawatan',
             excerpt: 'Identifikasi dan cara mengatasi berbagai jenis hama yang menyerang mangga secara organik...',
             image: '🐛',
-            date: '24 Okt 2025',
+            date: '17 Nov 2025',
             readTime: '9 min',
-            views: 2543,
-        },
-        {
-            id: 6,
-            title: 'AI dalam Pertanian: Masa Depan Farming',
-            category: 'teknologi',
-            excerpt: 'Penggunaan kecerdasan buatan untuk prediksi panen dan deteksi penyakit tanaman secara dini...',
-            image: '🧠',
-            date: '23 Okt 2025',
-            readTime: '10 min',
-            views: 4123,
+            views: 1890,
+            source: 'MOV Platform',
         },
     ];
 
@@ -94,7 +164,8 @@ export default function Welcome({ canLogin, canRegister }) {
         <>
             <Head title="MOV - Smart Farming" />
             
-            <div className="min-h-screen bg-gradient-to-br from-gray-50 via-green-50/30 to-blue-50/30">
+            <div className="min-h-screen relative overflow-hidden">
+                <AnimatedBackground />
                 {/* Header dengan Logo dan Login/Register */}
                 <motion.header
                     initial={{ opacity: 0, y: -20 }}
@@ -143,7 +214,7 @@ export default function Welcome({ canLogin, canRegister }) {
                 </motion.header>
 
                 {/* Main Content */}
-                <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
                     {/* Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
@@ -167,16 +238,20 @@ export default function Welcome({ canLogin, canRegister }) {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
                     >
-                        <div className="relative">
-                            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                            <Input
-                                type="text"
-                                placeholder="Cari artikel..."
-                                className="pl-12 h-12 text-base border-2 border-gray-200 focus:border-green-500 rounded-xl"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                            />
-                                    </div>
+                        <Card className="p-4 bg-white/90 backdrop-blur-xl border-2 border-white/50 shadow-lg">
+                            <div className="relative">
+                                <Search className={`absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 transition-colors ${
+                                    searchQuery ? 'text-green-500' : 'text-gray-400'
+                                }`} />
+                                <Input
+                                    type="text"
+                                    placeholder="Cari artikel..."
+                                    className="pl-12 pr-12 h-12 text-base border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl bg-white/80"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
+                        </Card>
                     </motion.div>
 
                     {/* Categories */}
@@ -216,24 +291,26 @@ export default function Welcome({ canLogin, canRegister }) {
                         >
                             <Card className="p-0 overflow-hidden bg-gradient-to-br from-green-500 via-emerald-500 to-yellow-500 border-0 shadow-xl">
                                 <div className="p-6 md:p-8 text-white">
-                                    <Badge className="bg-white text-green-600 mb-3 border-0">⭐ Trending</Badge>
-                                    <h3 className="text-2xl md:text-3xl font-bold text-white mb-3">Panduan Lengkap IoT untuk Petani Mangga</h3>
+                                    <Badge className="bg-white text-green-600 mb-3 border-0">⭐ Featured</Badge>
+                                    <h3 className="text-2xl md:text-3xl font-bold text-white mb-3">Manfaat Mangga: Buah Favorit Sejuta Umat</h3>
                                     <p className="text-base text-green-50 mb-4 max-w-2xl">
-                                        Implementasi teknologi IoT dari awal hingga mendapatkan hasil panen optimal dengan monitoring real-time
+                                        Temukan segudang manfaat kesehatan dari buah mangga, mulai dari vitamin C untuk imunitas, vitamin A untuk mata, hingga antioksidan untuk melawan radikal bebas. Pelajari juga varietas unggulan Mangga Indramayu dan teknik budidaya modern.
                                     </p>
-                                    {auth?.user ? (
-                                        <Link href={route('artikel')}>
-                                            <Button className="bg-white text-green-600 hover:bg-green-50 font-medium shadow-lg">
-                                                Baca Sekarang
-                                            </Button>
-                                        </Link>
-                                    ) : (
-                                        <Link href={route('register')}>
-                                            <Button className="bg-white text-green-600 hover:bg-green-50 font-medium shadow-lg">
-                                                Daftar untuk Membaca
-                                            </Button>
-                                        </Link>
-                                    )}
+                                    <Button 
+                                        className="bg-white text-green-600 hover:bg-green-50 font-medium shadow-lg"
+                                        onClick={() => {
+                                            const article = articles.find(a => a.id === 'manfaat-mangga-1');
+                                            if (article?.externalUrl) {
+                                                window.open(article.externalUrl, '_blank', 'noopener,noreferrer');
+                                            } else if (auth?.user) {
+                                                window.location.href = route('artikel');
+                                            } else {
+                                                window.location.href = route('register');
+                                            }
+                                        }}
+                                    >
+                                        Baca Sekarang
+                                    </Button>
                                 </div>
                             </Card>
                         </motion.div>
@@ -261,7 +338,16 @@ export default function Welcome({ canLogin, canRegister }) {
                                     transition={{ delay: index * 0.05 }}
                                     whileHover={{ scale: 1.02, x: 5 }}
                                 >
-                                    <Card className="p-4 md:p-6 border-2 border-gray-200 hover:border-green-500 hover:shadow-xl transition-all cursor-pointer">
+                                    <Card 
+                                        className={`p-4 md:p-6 bg-white/80 backdrop-blur-lg border-2 border-gray-200 hover:border-green-500 hover:shadow-xl transition-all ${
+                                            article.externalUrl ? 'cursor-pointer' : ''
+                                        }`}
+                                        onClick={() => {
+                                            if (article.externalUrl) {
+                                                window.open(article.externalUrl, '_blank', 'noopener,noreferrer');
+                                            }
+                                        }}
+                                    >
                                         <div className="flex gap-4">
                                             {/* Image/Icon */}
                                             <motion.div
@@ -282,21 +368,31 @@ export default function Welcome({ canLogin, canRegister }) {
                                                         {article.readTime}
                                                     </div>
                                                 </div>
-                                                <h4 className="text-lg font-bold text-gray-900 mb-2 line-clamp-2">{article.title}</h4>
-                                                <p className="text-sm text-gray-600 mb-3 line-clamp-2">{article.excerpt}</p>
-                                                <div className="flex items-center justify-between text-xs text-gray-500">
+                                                <div className="flex items-start justify-between gap-2 mb-2">
+                                                    <h4 className="text-lg font-bold text-gray-900 line-clamp-2 flex-1">{article.title}</h4>
+                                                    {article.externalUrl && (
+                                                        <ExternalLink className="w-4 h-4 text-green-600 flex-shrink-0 mt-1" />
+                                                    )}
+                                                </div>
+                                                <p className="text-sm text-gray-600 mb-2 line-clamp-2">{article.excerpt}</p>
+                                                <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
                                                     <span>{article.date}</span>
                                                     <span className="flex items-center gap-1">
                                                         <Eye className="w-3 h-3" />
                                                         {article.views} views
                                                     </span>
                                                 </div>
+                                                {article.source && (
+                                                    <div className="text-xs text-gray-500">
+                                                        Sumber: <span className="font-medium text-gray-700">{article.source}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </Card>
                                 </motion.div>
                             ))}
-                                    </div>
+                        </div>
                     </motion.div>
 
                     {/* Call to Action untuk Guest */}

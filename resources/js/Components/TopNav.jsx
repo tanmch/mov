@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { Home, Leaf, Camera, BookOpen, User } from 'lucide-react';
+import { Home, Leaf, Camera, BookOpen, User, HeadphonesIcon } from 'lucide-react';
 import { motion, useScroll, useMotionValueEvent } from 'framer-motion';
 import { useState, useEffect } from 'react';
 
@@ -27,6 +27,7 @@ export default function TopNav() {
         { id: 'kebun', label: 'Kebun', icon: Leaf, href: '/kebun' },
         { id: 'deteksi', label: 'Deteksi', icon: Camera, href: '/deteksi' },
         { id: 'artikel', label: 'Artikel', icon: BookOpen, href: '/artikel' },
+        { id: 'customer-service', label: 'MOV Center', icon: HeadphonesIcon, href: '/customer-service' },
         { id: 'profil', label: 'Profil', icon: User, href: '/profile' },
     ];
 

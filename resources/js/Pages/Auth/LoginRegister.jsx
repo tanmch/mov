@@ -53,13 +53,13 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
         setTimeout(() => setShowForgotPassword(false), 3000);
     };
 
-    // Animated mangoes
+    // Animated mangoes - dengan variasi posisi dan gerakan
     const mangoes = [
-        { id: 1, left: '10%', delay: 0, duration: 3, stemLength: 45 },
-        { id: 2, left: '30%', delay: 0.5, duration: 3.5, stemLength: 55 },
-        { id: 3, left: '50%', delay: 1, duration: 2.8, stemLength: 40 },
-        { id: 4, left: '70%', delay: 0.3, duration: 3.2, stemLength: 50 },
-        { id: 5, left: '90%', delay: 0.8, duration: 3.3, stemLength: 42 },
+        { id: 1, left: '10%', delay: 0, duration: 3, stemLength: 45, mirrored: false, rotation: 0 },
+        { id: 2, left: '30%', delay: 0.5, duration: 3.5, stemLength: 55, mirrored: true, rotation: 5 },
+        { id: 3, left: '50%', delay: 1, duration: 2.8, stemLength: 40, mirrored: false, rotation: -5 },
+        { id: 4, left: '70%', delay: 0.3, duration: 3.2, stemLength: 50, mirrored: true, rotation: 3 },
+        { id: 5, left: '90%', delay: 0.8, duration: 3.3, stemLength: 42, mirrored: false, rotation: -3 },
     ];
 
     return (
@@ -93,12 +93,16 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                 }}
                             >
                                 <div className="flex flex-col items-center">
+                                    {/* Ranting hijau - disesuaikan agar natural dengan GIF mangga, ditempelkan rapat */}
                                     <motion.div
-                                        className="w-1.5 bg-gradient-to-b from-green-700 via-green-600 to-green-500 rounded-full shadow-sm"
-                                        style={{ height: `${mango.stemLength}px` }}
+                                        className="w-2 bg-gradient-to-b from-green-700 via-green-600 to-green-500 rounded-full shadow-sm"
+                                        style={{ 
+                                            height: `${mango.stemLength}px`,
+                                            marginBottom: '-8px', // Menempelkan rapat dengan mangga
+                                        }}
                                         animate={{
-                                            scaleX: [1, 0.8, 1.2, 1],
-                                            rotateZ: [0, -2, 2, 0],
+                                            scaleX: [1, 0.9, 1.1, 1],
+                                            rotateZ: mango.mirrored ? [0, 2, -2, 0] : [0, -2, 2, 0],
                                         }}
                                         transition={{
                                             duration: mango.duration * 0.8,
@@ -107,45 +111,60 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             ease: "easeInOut",
                                         }}
                                     />
+                                    {/* GIF Mangga - diperbesar, ditempelkan rapat dengan ranting, dengan variasi posisi */}
                                     <motion.div
                                         className="relative"
+                                        style={{
+                                            marginTop: '-10px', // Menempelkan sangat rapat dengan ranting
+                                        }}
                                         animate={{
+                                            y: mango.mirrored ? [0, -12, 0] : [0, 12, 0],
+                                            rotate: mango.mirrored 
+                                                ? [8 + mango.rotation, -8 + mango.rotation, 8 + mango.rotation]
+                                                : [-8 + mango.rotation, 8 + mango.rotation, -8 + mango.rotation],
                                             scale: [1, 1.05, 0.98, 1],
-                                            rotateZ: [0, -2, 2, 0],
                                         }}
                                         transition={{
-                                            duration: mango.duration * 0.6,
+                                            duration: mango.duration,
                                             repeat: Infinity,
-                                            delay: mango.delay + 0.2,
-                                            ease: "easeInOut",
+                                            delay: mango.delay,
+                                            ease: [0.45, 0.05, 0.55, 0.95],
                                         }}
                                     >
-                                        <div className="w-11 h-13 bg-gradient-to-br from-yellow-300 via-amber-400 to-orange-500 rounded-full relative shadow-xl"
-                                            style={{ borderRadius: '45% 50% 50% 48% / 48% 45% 52% 50%' }}
-                                        >
-                                            <div className="absolute top-2 left-2 w-3.5 h-4 bg-gradient-to-br from-white via-yellow-100 to-transparent rounded-full opacity-80"></div>
-                                            <div className="absolute top-3.5 left-1.5 w-2 h-2 bg-white rounded-full opacity-50"></div>
-                                            <div className="absolute top-1.5 right-1.5 w-5 h-6 bg-gradient-to-br from-red-400 via-pink-400 to-transparent rounded-full opacity-50"></div>
-                                        </div>
-                                        <div className="absolute -top-1.5 right-1">
-                                            <div className="w-4 h-2.5 bg-gradient-to-br from-green-400 to-green-600 rounded-full transform rotate-45 shadow-md"></div>
-                                        </div>
+                                        <img 
+                                            src="/mango/mango.gif" 
+                                            alt="Animated Mango" 
+                                            className="w-20 h-24 object-contain"
+                                            style={{ 
+                                                filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.15))',
+                                                transform: mango.mirrored ? 'scaleX(-1)' : 'scaleX(1)', // Mirror untuk variasi
+                                            }}
+                                        />
                                     </motion.div>
                                 </div>
                             </motion.div>
                         ))}
                     </div>
 
-                    {/* Animated Grass */}
-                    <div className="absolute bottom-0 left-0 right-0 h-28 pointer-events-none overflow-hidden z-10">
-                        {Array.from({ length: 90 }).map((_, i) => {
-                            const layer = i < 30 ? 'back' : i < 60 ? 'mid' : 'front';
-                            const randomHeight = layer === 'back' ? 22 + Math.random() * 28 : layer === 'mid' ? 28 + Math.random() * 32 : 32 + Math.random() * 36;
+                    {/* Animated Grass - Lebih rindang dan lebih tinggi dengan bunga */}
+                    <div className="absolute bottom-0 left-0 right-0 h-40 pointer-events-none overflow-hidden z-10">
+                        {Array.from({ length: 80 }).map((_, i) => {
+                            const layer = i < 27 ? 'back' : i < 53 ? 'mid' : 'front';
+                            const randomHeight = layer === 'back' ? 35 + Math.random() * 40 : layer === 'mid' ? 40 + Math.random() * 45 : 45 + Math.random() * 50;
                             const randomLeft = Math.random() * 100;
                             const randomDelay = Math.random() * 3;
                             const randomDuration = 2 + Math.random() * 2;
                             const randomRotation = -8 + Math.random() * 16;
                             const swayAmount = 5 + Math.random() * 10;
+                            
+                            // Random flower color: kuning, merah, atau pink - semua rumput punya bunga
+                            const flowerColors = [
+                                { bg: 'bg-yellow-400', ring: 'ring-yellow-300' },
+                                { bg: 'bg-red-400', ring: 'ring-red-300' },
+                                { bg: 'bg-pink-400', ring: 'ring-pink-300' },
+                            ];
+                            const flowerColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+                            const hasFlower = true; // Semua rumput memiliki bunga
                             
                             return (
                                 <motion.div
@@ -167,11 +186,60 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                         ease: [0.45, 0.05, 0.55, 0.95],
                                     }}
                                 >
-                                    <div className={`${layer === 'back' ? 'w-1 opacity-70 bg-gradient-to-t from-green-700 via-green-600 to-green-500' : layer === 'mid' ? 'w-1.5 opacity-85 bg-gradient-to-t from-green-600 via-green-500 to-green-400' : 'w-2 bg-gradient-to-t from-green-500 via-green-400 to-green-300'} h-full rounded-t-full origin-bottom shadow-sm`}></div>
+                                    <div className={`${layer === 'back' ? 'w-1 opacity-70 bg-gradient-to-t from-green-700 via-green-600 to-green-500' : layer === 'mid' ? 'w-1.5 opacity-85 bg-gradient-to-t from-green-600 via-green-500 to-green-400' : 'w-2 bg-gradient-to-t from-green-500 via-green-400 to-green-300'} h-full rounded-t-full origin-bottom shadow-sm relative`}>
+                                        {/* Bunga di ujung rumput dengan kelopak */}
+                                        {hasFlower && (
+                                            <motion.div
+                                                className="absolute -top-3 left-1/2 -translate-x-1/2"
+                                                style={{
+                                                    width: layer === 'back' ? '12px' : layer === 'mid' ? '16px' : '20px',
+                                                    height: layer === 'back' ? '12px' : layer === 'mid' ? '16px' : '20px',
+                                                }}
+                                                animate={{
+                                                    scale: [1, 1.15, 1],
+                                                    rotate: [0, 360],
+                                                }}
+                                                transition={{
+                                                    duration: 4 + Math.random() * 2,
+                                                    repeat: Infinity,
+                                                    delay: randomDelay,
+                                                    ease: "easeInOut",
+                                                }}
+                                            >
+                                                {/* Kelopak bunga - 5 kelopak */}
+                                                {[0, 1, 2, 3, 4].map((petalIndex) => {
+                                                    const angle = (petalIndex * 72); // 360 / 5 = 72 derajat per kelopak
+                                                    const petalSize = layer === 'back' ? '4px' : layer === 'mid' ? '5px' : '6px';
+                                                    return (
+                                                        <div
+                                                            key={petalIndex}
+                                                            className={`absolute ${flowerColor.bg} rounded-full`}
+                                                            style={{
+                                                                width: petalSize,
+                                                                height: petalSize,
+                                                                left: '50%',
+                                                                top: '50%',
+                                                                transform: `translate(-50%, -50%) rotate(${angle}deg) translateY(-${layer === 'back' ? '4px' : layer === 'mid' ? '5px' : '6px'})`,
+                                                                transformOrigin: 'center',
+                                                            }}
+                                                        />
+                                                    );
+                                                })}
+                                                {/* Pusat bunga */}
+                                                <div 
+                                                    className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${flowerColor.bg} rounded-full opacity-80`}
+                                                    style={{
+                                                        width: layer === 'back' ? '3px' : layer === 'mid' ? '4px' : '5px',
+                                                        height: layer === 'back' ? '3px' : layer === 'mid' ? '4px' : '5px',
+                                                    }}
+                                                />
+                                            </motion.div>
+                                        )}
+                                    </div>
                                 </motion.div>
                             );
                         })}
-                        <div className="absolute bottom-0 left-0 right-0 h-5 bg-gradient-to-t from-green-800 via-green-700 to-transparent"></div>
+                        <div className="absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-green-800 via-green-700 to-transparent"></div>
                     </div>
 
                     {/* Logo & Welcome */}

@@ -5,9 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import AnimatedBackground from '@/Components/AnimatedBackground';
+import { useHeaderOffset } from '@/hooks/useHeaderOffset';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Thermometer, Droplets, Sprout, AlertTriangle, TrendingUp, Calendar, Activity, Wifi, WifiOff, Clock, Edit2, Save, X, CheckCircle2, XCircle, MapPin, ChevronDown, Filter } from 'lucide-react';
 import { useRole } from '@/hooks/useRole';
+import BackButton from '@/Components/BackButton';
 
 // Color palette for different bloks
 const getBlokColor = (index) => {
@@ -38,6 +40,7 @@ export default function MonitoringSensor({
     const page = usePage();
     const { auth } = page.props;
     const { isKPetani } = useRole();
+    const topOffset = useHeaderOffset();
     
     // Get CSRF token from page props or meta tag
     const getCsrfToken = () => {
@@ -468,6 +471,35 @@ export default function MonitoringSensor({
     // Store sensor data per blok for average calculation
     const [allBlokSensorData, setAllBlokSensorData] = useState({});
     
+    // State for Firebase-discovered bloks
+    const [firebaseBloks, setFirebaseBloks] = useState([]);
+    
+    // Calculate status based on thresholds (use configurable thresholds)
+    // Define this function BEFORE using it in useEffect
+    const calculateStatus = (sensorType, value) => {
+        if (!value || value === 0) return 'normal';
+        
+        const threshold = thresholdForm[sensorType] || thresholds[sensorType] || {};
+        
+        if (sensorType === 'suhu_udara') {
+            // For temperature: higher is worse
+            const criticalMax = threshold.critical_max ?? 40;
+            const warningMax = threshold.warning_max ?? 35;
+            
+            if (value >= criticalMax) return 'critical';
+            if (value >= warningMax) return 'warning';
+            return 'normal';
+        } else {
+            // For humidity: lower is worse
+            const criticalMin = threshold.critical_min ?? 20;
+            const warningMin = threshold.warning_min ?? 30;
+            
+            if (value <= criticalMin) return 'critical';
+            if (value <= warningMin) return 'warning';
+            return 'normal';
+        }
+    };
+    
     // Calculate average and update realtimeSensors when allBlokSensorData changes and selectedBlok is 'all'
     useEffect(() => {
         if (selectedBlok === 'all') {
@@ -499,59 +531,79 @@ export default function MonitoringSensor({
                     suhu_udara: {
                         value: avgSuhu,
                         unit: '°C',
-                        status: 'normal',
+                        status: calculateStatus('suhu_udara', avgSuhu),
                         timestamp: Date.now(),
                     },
                     kelembapan_udara: {
                         value: avgKelembUdara,
                         unit: '%',
-                        status: 'normal',
+                        status: calculateStatus('kelembapan_udara', avgKelembUdara),
                         timestamp: Date.now(),
                     },
                     kelembapan_tanah: {
                         value: avgKelembTanah,
                         unit: '%',
-                        status: 'normal',
+                        status: calculateStatus('kelembapan_tanah', avgKelembTanah),
                         timestamp: Date.now(),
                     },
                 });
+            } else {
+                // Fallback to MySQL data (currentSensors prop) if Firebase doesn't have data
+                if (currentSensors && Object.keys(currentSensors).length > 0) {
+                    const sensorUpdates = {};
+                    if (currentSensors.suhu_udara?.value !== undefined) {
+                        sensorUpdates.suhu_udara = {
+                            value: currentSensors.suhu_udara.value,
+                            unit: '°C',
+                            status: calculateStatus('suhu_udara', currentSensors.suhu_udara.value),
+                            timestamp: Date.now(),
+                        };
+                    }
+                    if (currentSensors.kelembapan_udara?.value !== undefined) {
+                        sensorUpdates.kelembapan_udara = {
+                            value: currentSensors.kelembapan_udara.value,
+                            unit: '%',
+                            status: calculateStatus('kelembapan_udara', currentSensors.kelembapan_udara.value),
+                            timestamp: Date.now(),
+                        };
+                    }
+                    if (currentSensors.kelembapan_tanah?.value !== undefined) {
+                        sensorUpdates.kelembapan_tanah = {
+                            value: currentSensors.kelembapan_tanah.value,
+                            unit: '%',
+                            status: calculateStatus('kelembapan_tanah', currentSensors.kelembapan_tanah.value),
+                            timestamp: Date.now(),
+                        };
+                    }
+                    if (Object.keys(sensorUpdates).length > 0) {
+                        console.log('[MonitoringSensor] Using MySQL fallback data for average:', sensorUpdates);
+                        setRealtimeSensors(sensorUpdates);
+                    }
+                }
             }
-        } else {
-            // Clear allBlokSensorData when not in 'all' mode
-            setAllBlokSensorData({});
         }
-    }, [allBlokSensorData, selectedBlok]);
+        // Don't clear allBlokSensorData when not in 'all' mode - we need it for single blok selection
+    }, [allBlokSensorData, selectedBlok, currentSensors, thresholds]);
+    
+    // Get sensor values from Firebase, with fallback to MySQL (currentSensors prop)
+    // Define this function BEFORE using it
+    const getDisplayedSensorValue = (sensorType) => {
+        // Priority: Firebase realtimeSensors > MySQL currentSensors
+        if (realtimeSensors?.[sensorType]?.value !== undefined && realtimeSensors?.[sensorType]?.value !== null && realtimeSensors?.[sensorType]?.value !== 0) {
+            return realtimeSensors[sensorType].value;
+        }
+        // Fallback to MySQL data
+        const mysqlSensor = currentSensors?.[sensorType];
+        if (mysqlSensor && mysqlSensor.value !== undefined && mysqlSensor.value !== null) {
+            return mysqlSensor.value;
+        }
+        return 0; // Default to 0 if no data
+    };
     
     // Get sensor values with fallback (prioritize real-time data)
-    const sensorsToUse = Object.keys(realtimeSensors).length > 0 ? realtimeSensors : currentSensors;
-    const suhuUdara = sensorsToUse?.suhu_udara?.value ?? 0;
-    const kelembabanUdara = sensorsToUse?.kelembapan_udara?.value ?? 0;
-    const kelembabanTanah = sensorsToUse?.kelembapan_tanah?.value ?? 0;
-    
-    // Calculate status based on thresholds (use configurable thresholds)
-    const calculateStatus = (sensorType, value) => {
-        if (!value || value === 0) return 'normal';
-        
-        const threshold = thresholdForm[sensorType] || thresholds[sensorType] || {};
-        
-        if (sensorType === 'suhu_udara') {
-            // For temperature: higher is worse
-            const criticalMax = threshold.critical_max ?? 40;
-            const warningMax = threshold.warning_max ?? 35;
-            
-            if (value >= criticalMax) return 'critical';
-            if (value >= warningMax) return 'warning';
-            return 'normal';
-        } else {
-            // For humidity: lower is worse
-            const criticalMin = threshold.critical_min ?? 20;
-            const warningMin = threshold.warning_min ?? 30;
-            
-            if (value <= criticalMin) return 'critical';
-            if (value <= warningMin) return 'warning';
-            return 'normal';
-        }
-    };
+    const suhuUdara = getDisplayedSensorValue('suhu_udara');
+    const kelembabanUdara = getDisplayedSensorValue('kelembapan_udara');
+    const kelembabanTanah = getDisplayedSensorValue('kelembapan_tanah');
     
     // Calculate status for each sensor
     const suhuStatus = calculateStatus('suhu_udara', suhuUdara);
@@ -611,34 +663,152 @@ export default function MonitoringSensor({
     // Get selected blok label
     const getSelectedBlokLabel = () => {
         if (selectedBlok === 'all') {
-            return '📊 Semua Blok';
+            return 'Semua Blok';
         }
+        // Prioritize firebaseBloks if available
+        const bloksToUse = (firebaseBloks && firebaseBloks.length > 0 && firebaseBloks.length >= bloks.length) ? firebaseBloks : bloks;
         const selected = blokOptions.find(opt => opt.value.toString() === selectedBlok.toString());
-        return selected ? `📍 ${selected.label}` : 'Pilih Blok';
+        
+        if (selected) {
+            // Extract blok code from label (e.g., "A1 - Blok A1" -> "A1")
+            const label = selected.label;
+            // If label contains " - ", take the part before it (the code)
+            if (label.includes(' - ')) {
+                return label.split(' - ')[0];
+            }
+            // If label is just the code, return it
+            return label;
+        }
+        
+        // Fallback: try to find blok from bloks array
+        const blokObj = bloksToUse.find(b => {
+            const bId = b.id?.toString();
+            const bCode = b.code?.toString();
+            const selected = selectedBlok.toString();
+            return bId === selected || bCode === selected;
+        });
+        
+        if (blokObj && blokObj.code) {
+            return blokObj.code;
+        }
+        
+        // Last fallback: return selectedBlok value itself (should be the code)
+        return selectedBlok.toString();
     };
+    
+    // Discover bloks from Firebase first
+    useEffect(() => {
+        console.log('[MonitoringSensor] Discovering bloks from Firebase...');
+        
+        const kebunIds = [1]; // Can be extended to check multiple kebuns
+        const discoveredBloksMap = new Map(); // Use Map to avoid duplicates
+        
+        kebunIds.forEach(kebunId => {
+            const bloksRef = ref(database, `kebuns/kebun_${kebunId}/bloks`);
+            
+            const discoveryCallback = (snapshot) => {
+                const bloksData = snapshot.val();
+                console.log(`[MonitoringSensor] Discovered bloks from kebun_${kebunId}:`, bloksData);
+                
+                if (bloksData && typeof bloksData === 'object') {
+                    Object.keys(bloksData).forEach(blokCode => {
+                        // Accept ALL bloks that exist in Firebase structure
+                        const blokData = bloksData[blokCode];
+                        if (blokData !== null && blokData !== undefined) {
+                            const key = `${kebunId}_${blokCode}`;
+                            if (!discoveredBloksMap.has(key)) {
+                                discoveredBloksMap.set(key, {
+                                    id: blokCode, // Use code as ID for Firebase-discovered bloks
+                                    code: blokCode,
+                                    kebun_id: kebunId,
+                                    name: blokCode // Default name
+                                });
+                                console.log(`[MonitoringSensor] Added blok ${blokCode} from kebun_${kebunId} to discovered list`);
+                            }
+                        }
+                    });
+                    
+                    // Convert Map to Array
+                    const discoveredBloks = Array.from(discoveredBloksMap.values());
+                    
+                    // Update state with discovered bloks
+                    setFirebaseBloks(discoveredBloks);
+                    
+                    console.log('[MonitoringSensor] Discovered bloks:', discoveredBloks);
+                }
+            };
+            
+            onValue(bloksRef, discoveryCallback, (error) => {
+                if (error) {
+                    console.error(`[MonitoringSensor] Error discovering bloks from kebun_${kebunId}:`, error);
+                } else {
+                    console.log(`[MonitoringSensor] Discovery listener connected for kebun_${kebunId}`);
+                }
+            });
+            
+            firebaseListenersRef.current.push({ ref: bloksRef, callback: discoveryCallback, isDiscoveryListener: true });
+        });
+        
+        // Cleanup function
+        return () => {
+            const discoveryListeners = firebaseListenersRef.current.filter(l => l.isDiscoveryListener);
+            discoveryListeners.forEach(listener => {
+                off(listener.ref, 'value', listener.callback);
+            });
+            firebaseListenersRef.current = firebaseListenersRef.current.filter(l => !l.isDiscoveryListener);
+        };
+    }, []);
 
     // Firebase Real-time Listener
     useEffect(() => {
-        // Cleanup previous listeners
-        firebaseListenersRef.current.forEach(listener => {
+        console.log('[MonitoringSensor] Firebase listener effect triggered', {
+            bloksCount: bloks.length,
+            firebaseBloksCount: firebaseBloks.length,
+            selectedBlok
+        });
+
+        // Cleanup previous sensor listeners (but keep discovery listener)
+        const sensorListeners = firebaseListenersRef.current.filter(l => l.isSensorListener);
+        sensorListeners.forEach(listener => {
             off(listener.ref, 'value', listener.callback);
         });
-        firebaseListenersRef.current = [];
+        firebaseListenersRef.current = firebaseListenersRef.current.filter(l => !l.isSensorListener);
 
+        // Prioritize firebaseBloks if it has more bloks than MySQL bloks
+        let bloksToUse = firebaseBloks && firebaseBloks.length > 0 ? firebaseBloks : bloks;
+        if (firebaseBloks && firebaseBloks.length > 0 && firebaseBloks.length >= bloks.length) {
+            bloksToUse = firebaseBloks;
+        } else if (bloks && bloks.length > 0) {
+            bloksToUse = bloks;
+        }
+        
         // If no bloks or selectedBlok is 'all', listen to all accessible bloks
+        // Always listen to ALL bloks to ensure allBlokSensorData is populated
         const bloksToListen = selectedBlok === 'all' 
-            ? bloks 
-            : bloks.filter(b => b.id.toString() === selectedBlok.toString());
+            ? bloksToUse 
+            : bloksToUse.filter(b => {
+                const bId = b.id?.toString();
+                const bCode = b.code?.toString();
+                const selected = selectedBlok.toString();
+                return bId === selected || bCode === selected;
+            });
 
         if (bloksToListen.length === 0) {
+            console.warn('[MonitoringSensor] No bloks to listen to after filtering', { selectedBlok, bloksCount: bloksToUse.length });
             setIsFirebaseConnected(false);
             return;
         }
+        
+        // If selectedBlok is not 'all', also listen to all bloks to populate allBlokSensorData
+        // This ensures that when user switches between bloks, data is already available
+        const allBloksToListen = selectedBlok === 'all' 
+            ? bloksToListen 
+            : bloksToUse; // Always listen to all bloks
 
         const activeListeners = new Set();
 
-        // Setup listeners for each blok
-        bloksToListen.forEach(blok => {
+        // Setup listeners for each blok (listen to all bloks to populate allBlokSensorData)
+        allBloksToListen.forEach(blok => {
             const kebunId = blok.kebun_id || blok.kebun?.id;
             const blokCode = blok.code;
             
@@ -692,13 +862,17 @@ export default function MonitoringSensor({
                         }
                     }));
                     
-                    // If selectedBlok is not 'all', update realtimeSensors directly
-                    if (selectedBlok !== 'all' && Object.keys(sensorUpdates).length > 0) {
-                        setRealtimeSensors(prev => ({
-                            ...prev,
-                            ...sensorUpdates
-                        }));
-                    } else {
+                    // If selectedBlok is not 'all', update realtimeSensors directly ONLY if this is the selected blok
+                    // Check if this blok matches the selected blok
+                    const isSelectedBlok = selectedBlok !== 'all' && (
+                        blok.id?.toString() === selectedBlok.toString() || 
+                        blokCode === selectedBlok.toString()
+                    );
+                    
+                    if (isSelectedBlok && Object.keys(sensorUpdates).length > 0) {
+                        console.log(`[MonitoringSensor] Updating realtimeSensors for selected blok ${blokCode}:`, sensorUpdates);
+                        setRealtimeSensors(sensorUpdates); // Replace, don't merge
+                    } else if (selectedBlok === 'all') {
                         // If 'all', calculate average and update realtimeSensors
                         // This will be done in useEffect that watches allBlokSensorData
                     }
@@ -773,17 +947,125 @@ export default function MonitoringSensor({
                 setIsFirebaseConnected(false);
             });
 
-            firebaseListenersRef.current.push({ ref: sensorRef, callback });
+            firebaseListenersRef.current.push({ ref: sensorRef, callback, isSensorListener: true });
         });
 
-        // Cleanup function
+        // Cleanup function - only cleanup sensor listeners
         return () => {
-            firebaseListenersRef.current.forEach(listener => {
+            const sensorListeners = firebaseListenersRef.current.filter(l => l.isSensorListener);
+            sensorListeners.forEach(listener => {
                 off(listener.ref, 'value', listener.callback);
             });
-            firebaseListenersRef.current = [];
+            firebaseListenersRef.current = firebaseListenersRef.current.filter(l => !l.isSensorListener);
         };
-    }, [bloks, selectedBlok]);
+    }, [bloks, firebaseBloks, selectedBlok]);
+    
+    // Update sensor display when selectedBlok changes (for single blok selection)
+    useEffect(() => {
+        if (selectedBlok === 'all') {
+            // Average calculation is handled in the useEffect below
+            return;
+        }
+        
+        // Find the selected blok
+        const bloksToUse = (firebaseBloks && firebaseBloks.length > 0 && firebaseBloks.length >= bloks.length) ? firebaseBloks : bloks;
+        const selectedBlokObj = bloksToUse.find(b => {
+            const bId = b.id?.toString();
+            const bCode = b.code?.toString();
+            const selected = selectedBlok.toString();
+            return bId === selected || bCode === selected;
+        });
+        
+        const selectedBlokCode = selectedBlokObj?.code || selectedBlok.toString();
+        
+        console.log('[MonitoringSensor] Updating sensor display for selected blok:', { selectedBlok, selectedBlokCode, availableBloks: bloksToUse.map(b => b.code), availableData: Object.keys(allBlokSensorData) });
+        
+        const blokData = allBlokSensorData[selectedBlokCode];
+        if (blokData) {
+            const sensorUpdates = {};
+            
+            if (blokData.suhu_udara !== undefined && blokData.suhu_udara !== null) {
+                let status = 'normal';
+                if (blokData.suhu_udara >= 40) status = 'critical';
+                else if (blokData.suhu_udara >= 35) status = 'warning';
+                
+                sensorUpdates.suhu_udara = {
+                    value: blokData.suhu_udara,
+                    unit: '°C',
+                    status: status,
+                    timestamp: Date.now(),
+                };
+            }
+            
+            if (blokData.kelembapan_udara !== undefined && blokData.kelembapan_udara !== null) {
+                let status = 'normal';
+                if (blokData.kelembapan_udara <= 20) status = 'critical';
+                else if (blokData.kelembapan_udara <= 30) status = 'warning';
+                
+                sensorUpdates.kelembapan_udara = {
+                    value: blokData.kelembapan_udara,
+                    unit: '%',
+                    status: status,
+                    timestamp: Date.now(),
+                };
+            }
+            
+            if (blokData.kelembapan_tanah !== undefined && blokData.kelembapan_tanah !== null) {
+                let status = 'normal';
+                if (blokData.kelembapan_tanah <= 20) status = 'critical';
+                else if (blokData.kelembapan_tanah <= 30) status = 'warning';
+                
+                sensorUpdates.kelembapan_tanah = {
+                    value: blokData.kelembapan_tanah,
+                    unit: '%',
+                    status: status,
+                    timestamp: Date.now(),
+                };
+            }
+            
+            if (Object.keys(sensorUpdates).length > 0) {
+                console.log(`[MonitoringSensor] Setting realtimeSensors for blok ${selectedBlokCode}:`, sensorUpdates);
+                setRealtimeSensors(sensorUpdates);
+            } else {
+                console.warn(`[MonitoringSensor] No sensor data available for blok ${selectedBlokCode}`);
+            }
+        } else {
+            console.warn(`[MonitoringSensor] Blok ${selectedBlokCode} not found in allBlokSensorData`);
+            // Fallback to MySQL data (currentSensors prop) if Firebase doesn't have data
+            // Note: currentSensors from MySQL may not be filtered by blok, so we use it as general fallback
+            if (currentSensors && Object.keys(currentSensors).length > 0) {
+                const sensorUpdates = {};
+                if (currentSensors.suhu_udara?.value !== undefined) {
+                    sensorUpdates.suhu_udara = {
+                        value: currentSensors.suhu_udara.value,
+                        unit: '°C',
+                        status: calculateStatus('suhu_udara', currentSensors.suhu_udara.value),
+                        timestamp: Date.now(),
+                    };
+                }
+                if (currentSensors.kelembapan_udara?.value !== undefined) {
+                    sensorUpdates.kelembapan_udara = {
+                        value: currentSensors.kelembapan_udara.value,
+                        unit: '%',
+                        status: calculateStatus('kelembapan_udara', currentSensors.kelembapan_udara.value),
+                        timestamp: Date.now(),
+                    };
+                }
+                if (currentSensors.kelembapan_tanah?.value !== undefined) {
+                    sensorUpdates.kelembapan_tanah = {
+                        value: currentSensors.kelembapan_tanah.value,
+                        unit: '%',
+                        status: calculateStatus('kelembapan_tanah', currentSensors.kelembapan_tanah.value),
+                        timestamp: Date.now(),
+                    };
+                }
+                if (Object.keys(sensorUpdates).length > 0) {
+                    console.log(`[MonitoringSensor] Using MySQL fallback data for blok ${selectedBlokCode}:`, sensorUpdates);
+                    setRealtimeSensors(sensorUpdates);
+                }
+            }
+        }
+    }, [selectedBlok, bloks, firebaseBloks, allBlokSensorData, currentSensors, thresholds]);
 
     // Get sensor type label
     const getSensorTypeLabel = (sensorType) => {
@@ -803,9 +1085,17 @@ export default function MonitoringSensor({
             {notification && (
                 <motion.div
                     initial={{ opacity: 0, y: -50, scale: 0.9 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    animate={{ 
+                        opacity: 1, 
+                        y: 0, 
+                        scale: 1,
+                        top: `${topOffset}px`,
+                    }}
                     exit={{ opacity: 0, y: -50, scale: 0.9 }}
-                    className="fixed top-4 right-4 z-[9999] max-w-md"
+                    style={{
+                        top: `${topOffset}px`,
+                    }}
+                    className="fixed right-4 z-[9999] max-w-md"
                 >
                     <div className={`relative p-5 rounded-2xl shadow-2xl border-2 overflow-hidden ${
                         notification.type === 'success' 
@@ -901,6 +1191,11 @@ export default function MonitoringSensor({
                 <AnimatedBackground />
                 
                 <div className="relative z-10 p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                    {/* Back Button */}
+                    <div className="mb-4">
+                        <BackButton href="/dashboard" />
+                    </div>
+                    
                     {/* Enhanced Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
@@ -1089,7 +1384,30 @@ export default function MonitoringSensor({
                                                     </motion.button>
                                                     
                                                     {/* Individual Blok Options */}
-                                                    {(blokOptions || []).filter(opt => opt.value !== 'all').map((opt, index) => (
+                                                    {/* Prioritize firebaseBloks if available and more complete */}
+                                                    {(() => {
+                                                        // Generate blok options from firebaseBloks if available and more complete
+                                                        let bloksToDisplay = blokOptions || [];
+                                                        if (firebaseBloks && firebaseBloks.length > 0 && firebaseBloks.length >= bloks.length) {
+                                                            // Use firebaseBloks to generate options
+                                                            bloksToDisplay = firebaseBloks.map(blok => ({
+                                                                value: blok.code, // Use code as value for Firebase bloks
+                                                                label: blok.code
+                                                            }));
+                                                        }
+                                                        return bloksToDisplay.filter(opt => opt.value !== 'all');
+                                                    })().map((opt, index) => {
+                                                        const allBlokOptions = (() => {
+                                                            let bloksToDisplay = blokOptions || [];
+                                                            if (firebaseBloks && firebaseBloks.length > 0 && firebaseBloks.length >= bloks.length) {
+                                                                bloksToDisplay = firebaseBloks.map(blok => ({
+                                                                    value: blok.code,
+                                                                    label: blok.code
+                                                                }));
+                                                            }
+                                                            return bloksToDisplay.filter(opt => opt.value !== 'all');
+                                                        })();
+                                                        return (
                                                         <motion.button
                                                             key={opt.value}
                                                             initial={{ opacity: 0, x: -20 }}
@@ -1102,7 +1420,7 @@ export default function MonitoringSensor({
                                                                 setIsBlokDropdownOpen(false);
                                                             }}
                                                             className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-all ${
-                                                                index < (blokOptions || []).filter(opt => opt.value !== 'all').length - 1 ? 'border-b border-gray-100' : ''
+                                                                index < allBlokOptions.length - 1 ? 'border-b border-gray-100' : ''
                                                             } ${
                                                                 selectedBlok.toString() === opt.value.toString() 
                                                                     ? 'bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 border-l-4 border-emerald-500 shadow-sm' 
@@ -1127,7 +1445,8 @@ export default function MonitoringSensor({
                                                                 </motion.div>
                                                             )}
                                                         </motion.button>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             </motion.div>
                                         )}
