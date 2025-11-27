@@ -27,6 +27,7 @@ class User extends Authenticatable
         'role',
         'photo_url',
         'is_active',
+        'enable_sensor_simulation',
         'last_login_at',
         'preferences',
         'password', // Add password for Laravel auth
@@ -49,6 +50,7 @@ class User extends Authenticatable
      */
     protected $casts = [
         'is_active' => 'boolean',
+        'enable_sensor_simulation' => 'boolean',
         'last_login_at' => 'datetime',
         'preferences' => 'array',
         'password' => 'hashed',

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+<style>
+	#result {
+		position: relative;
+		display: inline-block;
+	}
+	#result img {
+		display: block;
+	}
+	#result canvas {
+		position: absolute;
+		top: 0;
+		left: 0;
+		pointer-events: none;
+	}
+</style>
+</head>
+<body>
+	<input type="file" accept="image/*" id="fileInput">
+	<div id="result"></div>
+	<div id="detections"></div>
+	<div>
+		<button>start camera</button>
+		<video id="video" width="320" height="240"></video>
+	</div>
+	<script src="script.js"></script>
+</body>
+</html>

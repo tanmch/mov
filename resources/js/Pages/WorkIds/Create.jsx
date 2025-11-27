@@ -6,7 +6,7 @@ import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
-import { Key, ArrowLeft, Save, Plus } from 'lucide-react';
+import { Key, ArrowLeft, Save, Sparkles } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
 import { KPetaniOnly } from '@/Components/RoleGuard';
 
@@ -42,7 +42,7 @@ export default function Create() {
                 <div className="min-h-screen relative overflow-hidden">
                     <AnimatedBackground />
                     
-                    <div className="relative z-10 p-4 md:p-6 space-y-6 max-w-3xl mx-auto">
+                    <div className="relative z-10 p-4 md:p-6 space-y-6 max-w-2xl mx-auto">
                         {/* Header */}
                         <motion.div
                             initial={{ opacity: 0, y: -20 }}
@@ -56,47 +56,58 @@ export default function Create() {
                                 </Button>
                             </Link>
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+                                <motion.div
+                                    animate={{ rotate: [0, 5, -5, 0] }}
+                                    transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                                    className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg"
+                                >
                                     <Key className="w-6 h-6 text-white" />
-                                </div>
+                                </motion.div>
                                 <div>
                                     <h1 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
                                         Buat ID Kerja
                                     </h1>
+                                    <p className="text-sm text-gray-600">Generate ID Kerja baru untuk registrasi</p>
                                 </div>
                             </div>
                         </motion.div>
 
-                        <Card className="p-6 bg-white/80 backdrop-blur-lg border border-white/50">
+                        <Card className="p-6 bg-white/80 backdrop-blur-lg border border-white/50 shadow-xl">
                             <form onSubmit={submit} className="space-y-6">
                                 {/* Generate Multiple Toggle */}
-                                <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg border border-green-200">
+                                <motion.div
+                                    whileHover={{ scale: 1.02 }}
+                                    className="flex items-center gap-3 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 cursor-pointer"
+                                    onClick={() => setGenerateMultiple(!generateMultiple)}
+                                >
                                     <input
                                         type="checkbox"
                                         id="generateMultiple"
                                         checked={generateMultiple}
                                         onChange={(e) => setGenerateMultiple(e.target.checked)}
-                                        className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                        className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
                                     />
-                                    <Label htmlFor="generateMultiple" className="cursor-pointer">
-                                        Generate Multiple ID Kerja
+                                    <Label htmlFor="generateMultiple" className="cursor-pointer flex items-center gap-2">
+                                        <Sparkles className="w-4 h-4 text-green-600" />
+                                        <span className="font-medium">Generate Multiple ID Kerja</span>
                                     </Label>
-                                </div>
+                                </motion.div>
 
                                 {/* Role Selection */}
                                 <div>
-                                    <Label htmlFor="role" className="text-sm font-medium mb-2">
+                                    <Label htmlFor="role" className="text-sm font-medium mb-2 flex items-center gap-2">
+                                        <Key className="w-4 h-4 text-green-600" />
                                         Role <span className="text-red-500">*</span>
                                     </Label>
                                     <select
                                         id="role"
                                         value={data.role}
                                         onChange={(e) => setData('role', e.target.value)}
-                                        className="w-full rounded-lg border-gray-300 focus:border-green-500 focus:ring-green-500"
+                                        className="w-full rounded-xl border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 p-3 transition-all"
                                         required
                                     >
-                                        <option value="petani">Petani</option>
-                                        <option value="k-petani">K-Petani</option>
+                                        <option value="petani">🌾 Petani</option>
+                                        <option value="k-petani">👨‍💼 K-Petani</option>
                                     </select>
                                     {errors.role && (
                                         <p className="mt-1 text-sm text-red-600">{errors.role}</p>
@@ -114,12 +125,13 @@ export default function Create() {
                                             value={data.work_id}
                                             onChange={(e) => setData('work_id', e.target.value)}
                                             placeholder="Contoh: P-ABC12345 atau KP-XYZ67890"
+                                            className="rounded-xl border-2"
                                         />
                                         {errors.work_id && (
                                             <p className="mt-1 text-sm text-red-600">{errors.work_id}</p>
                                         )}
                                         <p className="mt-1 text-xs text-gray-500">
-                                            Jika dikosongkan, ID Kerja akan dibuat otomatis
+                                            💡 Jika dikosongkan, ID Kerja akan dibuat otomatis
                                         </p>
                                     </div>
                                 )}
@@ -137,10 +149,11 @@ export default function Create() {
                                             max="50"
                                             value={count}
                                             onChange={(e) => setCount(parseInt(e.target.value) || 1)}
+                                            className="rounded-xl border-2"
                                             required
                                         />
                                         <p className="mt-1 text-xs text-gray-500">
-                                            Maksimal 50 ID Kerja per kali generate
+                                            💡 Maksimal 50 ID Kerja per kali generate
                                         </p>
                                     </div>
                                 )}
@@ -155,20 +168,17 @@ export default function Create() {
                                         value={data.notes}
                                         onChange={(e) => setData('notes', e.target.value)}
                                         rows="3"
-                                        className="w-full rounded-lg border-gray-300 focus:border-green-500 focus:ring-green-500"
+                                        className="w-full rounded-xl border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 p-3 resize-none"
                                         placeholder="Tambahkan catatan untuk ID Kerja ini..."
                                     />
-                                    {errors.notes && (
-                                        <p className="mt-1 text-sm text-red-600">{errors.notes}</p>
-                                    )}
                                 </div>
 
                                 {/* Submit Button */}
-                                <div className="flex gap-3">
+                                <div className="flex gap-3 pt-4">
                                     <Button
                                         type="submit"
                                         disabled={processing}
-                                        className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
+                                        className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 shadow-lg"
                                     >
                                         {processing ? (
                                             'Memproses...'
@@ -180,7 +190,7 @@ export default function Create() {
                                         )}
                                     </Button>
                                     <Link href={route('work-ids.index')}>
-                                        <Button type="button" variant="outline">
+                                        <Button type="button" variant="outline" className="px-6">
                                             Batal
                                         </Button>
                                     </Link>
@@ -193,4 +203,3 @@ export default function Create() {
         </KPetaniOnly>
     );
 }
-

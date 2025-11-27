@@ -12,6 +12,9 @@ Route::get('/', function () {
     ]);
 });
 
+// Artikel route - accessible to all users (guest, petani, k-petani)
+Route::get('/artikel', [\App\Http\Controllers\ArticleController::class, 'indexPublic'])->name('artikel');
+
 Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
@@ -25,6 +28,9 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     
+    // Profile API routes
+    Route::post('/api/profile/toggle-sensor-simulation', [\App\Http\Controllers\Api\ProfileController::class, 'toggleSensorSimulation'])->name('profile.toggle-sensor-simulation');
+    
     // Read-only routes (all authenticated users can view)
     Route::get('/sensor', [\App\Http\Controllers\SensorController::class, 'index'])->name('sensor');
     
@@ -37,25 +43,34 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('PrediksiPanen');
     })->name('prediksi');
     
-    Route::get('/laporan', function () {
-        return Inertia::render('LaporanEkspor');
-    })->name('laporan');
+        Route::get('/laporan', [\App\Http\Controllers\ReportController::class, 'index'])->name('laporan');
+        Route::post('/laporan/generate', [\App\Http\Controllers\ReportController::class, 'generate'])->name('laporan.generate');
+        
+        // Firebase Sync routes (K-petani only)
+        Route::middleware('role:K-petani')->group(function () {
+            Route::post('/firebase/sync', [\App\Http\Controllers\FirebaseSyncController::class, 'syncAll'])->name('firebase.sync');
+            Route::get('/firebase/status', [\App\Http\Controllers\FirebaseSyncController::class, 'getStatus'])->name('firebase.status');
+        });
     
-    Route::get('/kebun', function () {
-        return Inertia::render('KebunMonitoring');
-    })->name('kebun');
+    Route::get('/kebun', [\App\Http\Controllers\KebunController::class, 'index'])->name('kebun');
     
     Route::get('/penyiraman', function () {
         return Inertia::render('Penyiraman');
     })->name('penyiraman');
     
-    Route::get('/deteksi', function () {
-        return Inertia::render('DeteksiKematangan');
-    })->name('deteksi');
+    Route::get('/deteksi', [\App\Http\Controllers\DetectionController::class, 'index'])->name('deteksi');
+    Route::post('/detections', [\App\Http\Controllers\DetectionController::class, 'store'])->name('detections.store');
+    Route::delete('/detections/{id}', [\App\Http\Controllers\DetectionController::class, 'destroy'])->name('detections.destroy');
+    Route::delete('/detections', [\App\Http\Controllers\DetectionController::class, 'destroyAll'])->name('detections.destroyAll');
     
-    Route::get('/artikel', function () {
-        return Inertia::render('ArtikelEdukasi');
-    })->name('artikel');
+    Route::get('/customer-service', [\App\Http\Controllers\ContactInfoController::class, 'index'])->name('customer-service');
+    
+    // Contact Info CRUD (K-Petani only)
+    Route::middleware('role:k-petani')->group(function () {
+        Route::post('/contact-info', [\App\Http\Controllers\ContactInfoController::class, 'store'])->name('contact-info.store');
+        Route::put('/contact-info/{id}', [\App\Http\Controllers\ContactInfoController::class, 'update'])->name('contact-info.update');
+        Route::delete('/contact-info/{id}', [\App\Http\Controllers\ContactInfoController::class, 'destroy'])->name('contact-info.destroy');
+    });
     
     // Robot routes (all authenticated users can view)
     Route::prefix('api/robot')->group(function () {
@@ -67,16 +82,18 @@ Route::middleware('auth')->group(function () {
     // K-Petani only routes (CRUD operations)
     Route::middleware('role:k-petani')->group(function () {
         // Kebun Management (CRUD)
-        // Routes akan ditambahkan ketika KebunController dibuat
-        // Route::post('/kebun', [KebunController::class, 'store'])->name('kebun.store');
-        // Route::put('/kebun/{id}', [KebunController::class, 'update'])->name('kebun.update');
-        // Route::delete('/kebun/{id}', [KebunController::class, 'destroy'])->name('kebun.destroy');
+        Route::get('/kebun/create', [\App\Http\Controllers\KebunController::class, 'create'])->name('kebun.create');
+        Route::post('/kebun', [\App\Http\Controllers\KebunController::class, 'store'])->name('kebun.store');
+        Route::get('/kebun/{kebun}/edit', [\App\Http\Controllers\KebunController::class, 'edit'])->name('kebun.edit');
+        Route::put('/kebun/{kebun}', [\App\Http\Controllers\KebunController::class, 'update'])->name('kebun.update');
+        Route::delete('/kebun/{kebun}', [\App\Http\Controllers\KebunController::class, 'destroy'])->name('kebun.destroy');
         
         // Blok Management (CRUD)
-        // Routes akan ditambahkan ketika BlokController dibuat
-        // Route::post('/blok', [BlokController::class, 'store'])->name('blok.store');
-        // Route::put('/blok/{id}', [BlokController::class, 'update'])->name('blok.update');
-        // Route::delete('/blok/{id}', [BlokController::class, 'destroy'])->name('blok.destroy');
+        Route::get('/blok/create', [\App\Http\Controllers\BlokController::class, 'create'])->name('blok.create');
+        Route::post('/blok', [\App\Http\Controllers\BlokController::class, 'store'])->name('blok.store');
+        Route::get('/blok/{blok}/edit', [\App\Http\Controllers\BlokController::class, 'edit'])->name('blok.edit');
+        Route::put('/blok/{blok}', [\App\Http\Controllers\BlokController::class, 'update'])->name('blok.update');
+        Route::delete('/blok/{blok}', [\App\Http\Controllers\BlokController::class, 'destroy'])->name('blok.destroy');
         
         // User Management (CRUD)
         Route::get('/users', [\App\Http\Controllers\UserController::class, 'index'])->name('users.index');
@@ -87,6 +104,12 @@ Route::middleware('auth')->group(function () {
         
         // Sensor Thresholds - Update (K-Petani only)
         Route::put('/sensor-thresholds/{sensorType}', [\App\Http\Controllers\SensorThresholdController::class, 'update'])->name('sensor-thresholds.update');
+        
+        // Article Management (CRUD) - K-Petani only
+        Route::post('/articles', [\App\Http\Controllers\ArticleController::class, 'store'])->name('articles.store');
+        Route::put('/articles/{article}', [\App\Http\Controllers\ArticleController::class, 'update'])->name('articles.update');
+        Route::delete('/articles/{article}', [\App\Http\Controllers\ArticleController::class, 'destroy'])->name('articles.destroy');
+        Route::post('/articles/generate', [\App\Http\Controllers\ArticleController::class, 'generateFromUrl'])->name('articles.generate');
         
         // Robot schedules - Create, Update, Cancel, Delete (K-Petani only)
         Route::prefix('api/robot')->group(function () {

@@ -209,7 +209,6 @@ __marimo__/
 =======
 *.log
 .DS_Store
-.env
 .env.backup
 .env.production
 .phpactor.json
@@ -232,4 +231,8 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 /config/firebase-credentials.json
+<<<<<<< HEAD
+/.env
+=======
 >>>>>>> origin/web2
+>>>>>>> origin

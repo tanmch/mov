@@ -1,62 +1,158 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, usePage } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
+import { Badge } from '@/Components/ui/badge';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
-import { FileText, Download, Filter, Calendar, BarChart3, TrendingUp, CheckCircle } from 'lucide-react';
+import { FileText, Download, Filter, Calendar, BarChart3, TrendingUp, CheckCircle, RefreshCw, Sparkles, X, AlertCircle } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
+import SkeletonLoader, { SkeletonList } from '@/Components/ui/SkeletonLoader';
+import EmptyState from '@/Components/ui/EmptyState';
+import LoadingOverlay from '@/Components/ui/LoadingOverlay';
+import BackButton from '@/Components/BackButton';
 
-export default function LaporanEkspor() {
+export default function LaporanEkspor({ summary = {}, availableReports = [], blokOptions = [] }) {
     const { auth } = usePage().props;
     const userRole = auth?.user?.role;
     const [selectedLaporanType, setSelectedLaporanType] = useState('deteksi');
     const [selectedFormat, setSelectedFormat] = useState('pdf');
     const [showFilter, setShowFilter] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(null);
+    const [selectedBlokId, setSelectedBlokId] = useState('');
+    const [selectedStatus, setSelectedStatus] = useState('');
+    const [notification, setNotification] = useState(null);
 
     const ringkasanData = {
-        totalDeteksi: 1250,
-        totalPenyiraman: 48,
-        avgKematangan: 67,
-        prediksiPanen: '15 Nov 2024',
+        totalDeteksi: summary?.totalDeteksi ?? 0,
+        totalPenyiraman: summary?.totalPenyiraman ?? 0,
+        avgKematangan: summary?.avgKematangan ?? 0,
+        prediksiPanen: summary?.prediksiPanen ?? 'Tidak ada',
     };
 
-    const laporanTersedia = [
-        {
-            id: 1,
-            judul: 'Laporan Deteksi Kematangan - Oktober 2024',
-            tanggal: '01-31 Okt 2024',
-            tipe: 'Deteksi',
-            ukuran: '2.4 MB',
-            format: 'PDF',
-        },
-        {
-            id: 2,
-            judul: 'Laporan Sensor IoT - Oktober 2024',
-            tanggal: '01-31 Okt 2024',
-            tipe: 'Sensor',
-            ukuran: '1.8 MB',
-            format: 'Excel',
-        },
-        {
-            id: 3,
-            judul: 'Laporan Penyiraman Otomatis - Oktober 2024',
-            tanggal: '01-31 Okt 2024',
-            tipe: 'Penyiraman',
-            ukuran: '950 KB',
-            format: 'PDF',
-        },
-    ];
+    const [laporanTersedia, setLaporanTersedia] = useState(availableReports || []);
 
-    const handleGenerateLaporan = (e) => {
+    const handleGenerateLaporan = async (e) => {
         e.preventDefault();
-        // Toast akan ditambahkan nanti
+        setIsGenerating(true);
+        
+        const formData = new FormData(e.target);
+        const startDate = formData.get('startDate');
+        const endDate = formData.get('endDate');
+        
+        if (!startDate || !endDate) {
+            setNotification({
+                type: 'error',
+                message: 'Silakan pilih tanggal mulai dan tanggal akhir',
+            });
+            setIsGenerating(false);
+            setTimeout(() => setNotification(null), 3000);
+            return;
+        }
+        
+        try {
+            const response = await window.axios.post(route('laporan.generate'), {
+                type: selectedLaporanType,
+                format: selectedFormat,
+                start_date: startDate,
+                end_date: endDate,
+                blok_id: selectedBlokId || null,
+                status: selectedStatus || null,
+            }, {
+                responseType: 'blob', // Important for file download
+                validateStatus: function (status) {
+                    // Accept both success (200) and error responses
+                    return status >= 200 && status < 500;
+                }
+            });
+            
+            // Check if response is an error (JSON error message)
+            if (response.headers['content-type'] && response.headers['content-type'].includes('application/json')) {
+                // Response is JSON error, not a file
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const errorData = JSON.parse(reader.result);
+                        setNotification({
+                            type: 'error',
+                            message: errorData.message || 'Gagal membuat laporan',
+                        });
+                        setTimeout(() => setNotification(null), 5000);
+                    } catch (e) {
+                        setNotification({
+                            type: 'error',
+                            message: 'Gagal membuat laporan',
+                        });
+                        setTimeout(() => setNotification(null), 5000);
+                    }
+                };
+                reader.readAsText(response.data);
+                return;
+            }
+            
+            // Create blob and download
+            const blob = new Blob([response.data]);
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            
+            // Get filename from Content-Disposition header or use default
+            const contentDisposition = response.headers['content-disposition'];
+            let filename = `laporan_${selectedLaporanType}_${startDate}_${endDate}`;
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (filenameMatch && filenameMatch[1]) {
+                    filename = filenameMatch[1].replace(/['"]/g, '');
+                }
+            }
+            
+            const extension = selectedFormat === 'pdf' ? '.pdf' : selectedFormat === 'csv' ? '.csv' : '.xlsx';
+            link.setAttribute('download', filename + extension);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            
+            setNotification({
+                type: 'success',
+                message: 'Laporan berhasil dibuat dan diunduh!',
+            });
+            setTimeout(() => setNotification(null), 3000);
+        } catch (error) {
+            console.error('Error generating report:', error);
+            let errorMessage = 'Gagal membuat laporan';
+            
+            if (error.response) {
+                // Server responded with error
+                if (error.response.data && typeof error.response.data === 'object') {
+                    errorMessage = error.response.data.message || errorMessage;
+                } else if (typeof error.response.data === 'string') {
+                    errorMessage = error.response.data;
+                }
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            setNotification({
+                type: 'error',
+                message: errorMessage,
+            });
+            setTimeout(() => setNotification(null), 5000);
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     const handleDownload = (laporan) => {
-        // Download logic akan ditambahkan nanti
+        setIsDownloading(laporan.id);
+        setTimeout(() => {
+            setIsDownloading(null);
+            // Download logic akan ditambahkan nanti
+        }, 1500);
     };
 
     const getTipeColor = (tipe) => {
@@ -81,23 +177,58 @@ export default function LaporanEkspor() {
             <div className="min-h-screen relative overflow-hidden">
                 <AnimatedBackground />
                 <div className="relative p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                    <LoadingOverlay show={isGenerating} message="Membuat laporan..." />
+                    
+                    {/* Back Button */}
+                    <div className="mb-4">
+                        <BackButton href="/dashboard" />
+                    </div>
+                    
                     {/* Header */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center gap-3 mb-6"
+                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6"
                     >
-                        <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <FileText className="w-6 h-6 text-white" />
+                        <div className="flex items-center gap-3">
+                            <motion.div
+                                animate={{ rotate: [0, 5, -5, 0] }}
+                                transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+                                className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg"
+                            >
+                                <FileText className="w-6 h-6 text-white" />
+                            </motion.div>
+                            <div>
+                                <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                                    Laporan & Ekspor
+                                </h1>
+                                <p className="text-sm text-gray-600">Generate & Download</p>
+                            </div>
                         </div>
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                                Laporan & Ekspor
-                            </h1>
-                            <p className="text-sm text-gray-600">Generate & Download</p>
-                        </div>
+                        <Button
+                            onClick={() => setIsLoading(true)}
+                            variant="outline"
+                            size="sm"
+                            disabled={isLoading}
+                            className="flex items-center gap-2"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                            Refresh
+                        </Button>
                     </motion.div>
 
+                    {/* Loading State */}
+                    {isLoading ? (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <SkeletonCard />
+                                <SkeletonCard />
+                            </div>
+                            <SkeletonCard />
+                            <SkeletonLoader type="list" count={3} />
+                        </div>
+                    ) : (
+                        <>
                     {/* Ringkasan Quick Stats */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
@@ -194,11 +325,11 @@ export default function LaporanEkspor() {
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <Label htmlFor="startDate" className="text-sm font-medium mb-2 block">Dari Tanggal</Label>
-                                        <Input id="startDate" type="date" className="h-11 text-sm" required />
+                                        <Input id="startDate" name="startDate" type="date" className="h-11 text-sm" required />
                                     </div>
                                     <div>
                                         <Label htmlFor="endDate" className="text-sm font-medium mb-2 block">Sampai Tanggal</Label>
-                                        <Input id="endDate" type="date" className="h-11 text-sm" required />
+                                        <Input id="endDate" name="endDate" type="date" className="h-11 text-sm" required />
                                     </div>
                                 </div>
 
@@ -222,33 +353,57 @@ export default function LaporanEkspor() {
                                         >
                                             <div>
                                                 <Label htmlFor="blok" className="text-sm font-medium mb-2 block">Filter Blok</Label>
-                                                <select id="blok" className="w-full p-3 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500">
-                                                    <option value="all">Semua Blok</option>
-                                                    <option value="blok-a">Blok A</option>
-                                                    <option value="blok-b">Blok B</option>
-                                                    <option value="blok-c">Blok C</option>
+                                                <select 
+                                                    id="blok" 
+                                                    value={selectedBlokId}
+                                                    onChange={(e) => setSelectedBlokId(e.target.value)}
+                                                    className="w-full p-2.5 sm:p-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 sm:focus:ring-4 focus:ring-green-500/20 focus:border-green-500 bg-gradient-to-br from-white to-green-50/30 text-gray-900 font-medium shadow-sm hover:shadow-md transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23334155%22%20d%3D%22M6%209L1%204h10z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px] sm:bg-[length:12px] bg-[right_8px_center] sm:bg-[right_12px_center] bg-no-repeat pr-8 sm:pr-10"
+                                                >
+                                                    <option value="">Semua Blok</option>
+                                                    {blokOptions.map((blok) => (
+                                                        <option key={blok.value} value={blok.value}>
+                                                            {blok.label}
+                                                        </option>
+                                                    ))}
                                                 </select>
                                             </div>
-                                            <div>
-                                                <Label htmlFor="status" className="text-sm font-medium mb-2 block">Filter Status</Label>
-                                                <select id="status" className="w-full p-3 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500">
-                                                    <option value="all">Semua Status</option>
-                                                    <option value="mentah">Mentah</option>
-                                                    <option value="hampir-matang">Hampir Matang</option>
-                                                    <option value="matang">Matang</option>
-                                                    <option value="lewat-matang">Lewat Matang</option>
-                                                </select>
-                                            </div>
+                                            {selectedLaporanType === 'deteksi' && (
+                                                <div>
+                                                    <Label htmlFor="status" className="text-sm font-medium mb-2 block">Filter Status</Label>
+                                                    <select 
+                                                        id="status" 
+                                                        value={selectedStatus}
+                                                        onChange={(e) => setSelectedStatus(e.target.value)}
+                                                        className="w-full p-2.5 sm:p-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 sm:focus:ring-4 focus:ring-green-500/20 focus:border-green-500 bg-gradient-to-br from-white to-green-50/30 text-gray-900 font-medium shadow-sm hover:shadow-md transition-all cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23334155%22%20d%3D%22M6%209L1%204h10z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px] sm:bg-[length:12px] bg-[right_8px_center] sm:bg-[right_12px_center] bg-no-repeat pr-8 sm:pr-10"
+                                                    >
+                                                        <option value="">Semua Status</option>
+                                                        <option value="mentah">Mentah</option>
+                                                        <option value="hampir_matang">Hampir Matang</option>
+                                                        <option value="matang">Matang</option>
+                                                        <option value="lewat_matang">Lewat Matang</option>
+                                                    </select>
+                                                </div>
+                                            )}
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
 
                                 <Button 
                                     type="submit" 
+                                    disabled={isGenerating}
                                     className="w-full h-12 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg"
                                 >
-                                    <Download className="w-5 h-5 mr-2" />
-                                    Generate & Download
+                                    {isGenerating ? (
+                                        <>
+                                            <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                                            Membuat Laporan...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download className="w-5 h-5 mr-2" />
+                                            Generate & Download
+                                        </>
+                                    )}
                                 </Button>
                             </form>
                         </Card>
@@ -262,47 +417,69 @@ export default function LaporanEkspor() {
                     >
                         <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-blue-200/50 shadow-xl">
                             <div className="flex items-center gap-3 mb-4">
-                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg">
+                                <motion.div
+                                    animate={{ rotate: [0, 360] }}
+                                    transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                                    className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg"
+                                >
                                     <Calendar className="w-5 h-5 text-white" />
-                                </div>
+                                </motion.div>
                                 <h3 className="text-lg font-bold text-gray-800">Laporan Tersimpan</h3>
                             </div>
-                            <div className="space-y-3">
-                                {laporanTersedia.map((laporan, index) => (
-                                    <motion.div
-                                        key={laporan.id}
-                                        initial={{ opacity: 0, x: -20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: index * 0.1 }}
-                                        whileHover={{ scale: 1.02, x: 5 }}
-                                        className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-xl border-2 border-gray-200 shadow-md"
-                                    >
-                                        <div className="flex items-start justify-between mb-2">
-                                            <div className="flex-1">
-                                                <p className="text-sm font-bold text-gray-800 mb-2">{laporan.judul}</p>
-                                                <div className="flex items-center gap-2">
-                                                    <Badge className={`${getTipeColor(laporan.tipe)} border-2`}>
-                                                        {laporan.tipe}
-                                                    </Badge>
-                                                    <span className="text-xs text-gray-600">{laporan.format}</span>
+                            {laporanTersedia.length === 0 ? (
+                                <EmptyState
+                                    icon={FileText}
+                                    title="Belum Ada Laporan"
+                                    message="Generate laporan baru untuk melihatnya di sini."
+                                />
+                            ) : (
+                                <div className="space-y-3">
+                                    {laporanTersedia.map((laporan, index) => (
+                                        <motion.div
+                                            key={laporan.id}
+                                            initial={{ opacity: 0, x: -20 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            transition={{ delay: index * 0.1 }}
+                                            whileHover={{ scale: 1.02, x: 5 }}
+                                            className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 rounded-xl border-2 border-gray-200 shadow-md hover:shadow-lg transition-all"
+                                        >
+                                            <div className="flex items-start justify-between mb-2">
+                                                <div className="flex-1">
+                                                    <p className="text-sm font-bold text-gray-800 mb-2">{laporan.judul}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge className={`${getTipeColor(laporan.tipe)} border-2`}>
+                                                            {laporan.tipe}
+                                                        </Badge>
+                                                        <span className="text-xs text-gray-600">{laporan.format}</span>
+                                                    </div>
                                                 </div>
+                                                <motion.div
+                                                    whileHover={{ scale: 1.1 }}
+                                                    whileTap={{ scale: 0.9 }}
+                                                >
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleDownload(laporan)}
+                                                        disabled={isDownloading === laporan.id}
+                                                        className="h-9 px-3"
+                                                    >
+                                                        {isDownloading === laporan.id ? (
+                                                            <RefreshCw className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            <Download className="w-4 h-4" />
+                                                        )}
+                                                    </Button>
+                                                </motion.div>
                                             </div>
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                onClick={() => handleDownload(laporan)}
-                                                className="h-9 px-3"
-                                            >
-                                                <Download className="w-4 h-4" />
-                                            </Button>
-                                        </div>
-                                        <div className="flex items-center gap-4 mt-2 text-xs text-gray-600">
-                                            <span>📅 {laporan.tanggal}</span>
-                                            <span>📦 {laporan.ukuran}</span>
-                                        </div>
-                                    </motion.div>
-                                ))}
-                            </div>
+                                            <div className="flex items-center gap-4 mt-2 text-xs text-gray-600">
+                                                <span>📅 {laporan.tanggal}</span>
+                                                <span>📦 {laporan.ukuran}</span>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            )}
                         </Card>
                     </motion.div>
 
@@ -384,6 +561,41 @@ export default function LaporanEkspor() {
                             </ul>
                         </Card>
                     </motion.div>
+                        </>
+                    )}
+
+                    {/* Notification Toast */}
+                    {notification && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -50, x: '-50%' }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -50 }}
+                            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100]"
+                        >
+                            <Card className={`p-4 shadow-2xl ${
+                                notification.type === 'success' 
+                                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' 
+                                    : 'bg-gradient-to-r from-red-500 to-red-600 text-white'
+                            }`}>
+                                <div className="flex items-center gap-3">
+                                    {notification.type === 'success' ? (
+                                        <CheckCircle className="w-5 h-5" />
+                                    ) : (
+                                        <AlertCircle className="w-5 h-5" />
+                                    )}
+                                    <p className="font-medium">{notification.message}</p>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setNotification(null)}
+                                        className="ml-2 h-6 w-6 p-0 text-white hover:bg-white/20"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                            </Card>
+                        </motion.div>
+                    )}
                 </div>
             </div>
         </AuthenticatedLayout>

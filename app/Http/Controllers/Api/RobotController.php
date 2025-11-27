@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\RobotSchedule;
 use App\Models\Blok;
+use App\Models\Kebun;
 use App\Models\ActivityLog;
 use App\Services\FirebaseSyncService;
 use Illuminate\Http\Request;
@@ -130,12 +131,13 @@ class RobotController extends Controller
             }
 
             $validator = Validator::make($request->all(), [
-                'blok_id' => 'required|exists:bloks,id',
+                'blok_id' => 'required', // Can be numeric ID or string code
                 'mission_type' => 'required|in:deteksi,penyiraman,pemupukan,kombinasi',
                 'description' => 'nullable|string',
                 'scheduled_at' => 'required|date|after:now',
                 'priority' => 'nullable|in:low,medium,high,urgent',
                 'mission_details' => 'nullable|array',
+                'kebun_id' => 'nullable|integer', // Optional kebun_id from request
             ]);
 
             if ($validator->fails()) {
@@ -146,11 +148,65 @@ class RobotController extends Controller
                 ], 422);
             }
 
-            $blok = Blok::findOrFail($request->blok_id);
+            // Handle blok_id - can be numeric ID or string code
+            $blokId = $request->blok_id;
+            $blok = null;
+            
+            // Try to find by numeric ID first
+            if (is_numeric($blokId)) {
+                $blok = Blok::find($blokId);
+            }
+            
+            // If not found by ID, try to find by code
+            if (!$blok) {
+                $blok = Blok::where('code', $blokId)->first();
+            }
+            
+            // If still not found, create it (firstOrCreate)
+            if (!$blok) {
+                // Get or create kebun first
+                $kebunId = $request->kebun_id ?? 1; // Default to kebun_1 to match Firebase structure
+                $kebun = Kebun::firstOrCreate(
+                    ['id' => $kebunId],
+                    [
+                        'name' => "Kebun {$kebunId}",
+                        'owner_id' => $user->id, // Use current user as owner
+                    ]
+                );
+                
+                // Create blok with code
+                $blok = Blok::firstOrCreate(
+                    [
+                        'code' => $blokId,
+                        'kebun_id' => $kebun->id,
+                    ],
+                    [
+                        'name' => $blokId, // Use code as name
+                        'luas' => 0.00, // Default luas in hectares
+                        'jumlah_pohon' => 0, // Default jumlah pohon
+                        'status' => 'sehat', // Default status
+                    ]
+                );
+            }
+            
+            // Ensure blok has kebun relationship
+            if (!$blok->kebun) {
+                $kebunId = $request->kebun_id ?? $blok->kebun_id ?? 1;
+                $kebun = Kebun::firstOrCreate(
+                    ['id' => $kebunId],
+                    [
+                        'name' => "Kebun {$kebunId}",
+                        'owner_id' => $user->id,
+                    ]
+                );
+                $blok->kebun_id = $kebun->id;
+                $blok->save();
+            }
 
             // Create schedule in MySQL
+            // Use $blok->id (numeric ID) instead of $request->blok_id (which could be string code)
             $schedule = RobotSchedule::create([
-                'blok_id' => $request->blok_id,
+                'blok_id' => $blok->id, // Use the numeric ID from the found/created blok
                 'created_by' => $user->id,
                 'mission_type' => $request->mission_type,
                 'description' => $request->description,
