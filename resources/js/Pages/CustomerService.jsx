@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
@@ -10,13 +10,14 @@ import { useRole } from '@/hooks/useRole';
 import { 
     MessageCircle, Phone, Mail, User, Send, HeadphonesIcon, 
     FileQuestion, BookOpen, Lightbulb, Settings, ShieldCheck,
-    Sparkles, Zap, Clock, CheckCircle2
+    Sparkles, Zap, Clock, CheckCircle2, Edit, X, Save
 } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
 import BackButton from '@/Components/BackButton';
 
-export default function CustomerService() {
+export default function CustomerService({ contactInfo: contactInfoProp }) {
     const { isKPetani, userRole } = useRole();
+    const { flash } = usePage().props;
     const [message, setMessage] = useState('');
     const [chatMessages, setChatMessages] = useState([
         {
@@ -28,13 +29,63 @@ export default function CustomerService() {
     ]);
     const chatEndRef = useRef(null);
     const [isTyping, setIsTyping] = useState(false);
+    const [isEditingContact, setIsEditingContact] = useState(false);
+    const [contactFormData, setContactFormData] = useState({
+        whatsapp: '',
+        phone: '',
+        email: '',
+        operational_hours: '',
+    });
 
-    // MOV Center Contact Info
-    const contactInfo = {
+    // MOV Center Contact Info - from database or default
+    const defaultContactInfo = {
         email: 'movproject03@gmail.com',
         phone: '+62 811-2019-210',
         whatsapp: '+62 811-2019-210',
         operationalHours: 'Senin - Jumat: 08:00 - 17:00 WIB',
+    };
+
+    const contactInfo = contactInfoProp ? {
+        email: contactInfoProp.email || defaultContactInfo.email,
+        phone: contactInfoProp.phone || defaultContactInfo.phone,
+        whatsapp: contactInfoProp.whatsapp || defaultContactInfo.whatsapp,
+        operationalHours: contactInfoProp.operational_hours || defaultContactInfo.operationalHours,
+    } : defaultContactInfo;
+
+    // Initialize form data when editing
+    useEffect(() => {
+        if (isEditingContact && contactInfoProp) {
+            setContactFormData({
+                whatsapp: contactInfoProp.whatsapp || '',
+                phone: contactInfoProp.phone || '',
+                email: contactInfoProp.email || '',
+                operational_hours: contactInfoProp.operational_hours || '',
+            });
+        }
+    }, [isEditingContact, contactInfoProp]);
+
+    const handleSaveContact = (e) => {
+        e.preventDefault();
+        
+        if (contactInfoProp?.id) {
+            // Update existing
+            router.put(route('contact-info.update', contactInfoProp.id), contactFormData, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsEditingContact(false);
+                    router.reload({ only: ['contactInfo'] });
+                },
+            });
+        } else {
+            // Create new
+            router.post(route('contact-info.store'), contactFormData, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsEditingContact(false);
+                    router.reload({ only: ['contactInfo'] });
+                },
+            });
+        }
     };
 
     // Help Categories - Seperti Tokopedia & IPB Help Center
@@ -300,6 +351,13 @@ export default function CustomerService() {
         }
     }, [chatMessages, isTyping]);
 
+    // Show flash messages
+    useEffect(() => {
+        if (flash?.success) {
+            alert(flash.success);
+        }
+    }, [flash]);
+
     return (
         <AuthenticatedLayout>
             <Head title="MOV Center - Customer Service" />
@@ -498,50 +556,142 @@ export default function CustomerService() {
                         <Card className="p-6 md:p-8 bg-gradient-to-r from-green-50 via-emerald-50 to-teal-50 border-2 border-green-200/60 shadow-xl relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-64 h-64 bg-green-400/10 rounded-full blur-3xl -mr-32 -mt-32"></div>
                             <div className="relative z-10">
-                                <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
-                                        <Phone className="w-5 h-5 text-white" />
-                                    </div>
-                                    Informasi Kontak
-                                </h3>
-                                <div className="space-y-4">
-                                    <motion.div
-                                        whileHover={{ x: 5 }}
-                                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                <MessageCircle className="w-5 h-5 text-green-600" />
-                                            </div>
-                                            <span className="text-gray-700 font-medium">WhatsApp CS</span>
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+                                            <Phone className="w-5 h-5 text-white" />
                                         </div>
-                                        <span className="text-gray-900 font-bold text-sm sm:text-base sm:ml-auto">{contactInfo.whatsapp}</span>
-                                    </motion.div>
-                                    <motion.div
-                                        whileHover={{ x: 5 }}
-                                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                <Mail className="w-5 h-5 text-purple-600" />
-                                            </div>
-                                            <span className="text-gray-700 font-medium">Email</span>
-                                        </div>
-                                        <span className="text-gray-900 font-semibold text-xs sm:text-sm break-all sm:ml-auto">{contactInfo.email}</span>
-                                    </motion.div>
-                                    <motion.div
-                                        whileHover={{ x: 5 }}
-                                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                <Clock className="w-5 h-5 text-blue-600" />
-                                            </div>
-                                            <span className="text-gray-700 font-medium">Jam Operasional</span>
-                                        </div>
-                                        <span className="text-gray-900 font-semibold text-xs sm:text-sm sm:ml-auto">{contactInfo.operationalHours}</span>
-                                    </motion.div>
+                                        Informasi Kontak
+                                    </h3>
+                                    {isKPetani && (
+                                        <motion.button
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            onClick={() => setIsEditingContact(!isEditingContact)}
+                                            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-lg transition-colors"
+                                        >
+                                            {isEditingContact ? (
+                                                <>
+                                                    <X className="w-4 h-4" />
+                                                    Batal
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Edit className="w-4 h-4" />
+                                                    Edit
+                                                </>
+                                            )}
+                                        </motion.button>
+                                    )}
                                 </div>
+                                
+                                {isEditingContact && isKPetani ? (
+                                    <form onSubmit={handleSaveContact} className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                WhatsApp CS
+                                            </label>
+                                            <Input
+                                                type="text"
+                                                value={contactFormData.whatsapp}
+                                                onChange={(e) => setContactFormData({ ...contactFormData, whatsapp: e.target.value })}
+                                                placeholder="+62 811-2019-210"
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Telepon
+                                            </label>
+                                            <Input
+                                                type="text"
+                                                value={contactFormData.phone}
+                                                onChange={(e) => setContactFormData({ ...contactFormData, phone: e.target.value })}
+                                                placeholder="+62 811-2019-210"
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Email
+                                            </label>
+                                            <Input
+                                                type="email"
+                                                value={contactFormData.email}
+                                                onChange={(e) => setContactFormData({ ...contactFormData, email: e.target.value })}
+                                                placeholder="movproject03@gmail.com"
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Jam Operasional
+                                            </label>
+                                            <Input
+                                                type="text"
+                                                value={contactFormData.operational_hours}
+                                                onChange={(e) => setContactFormData({ ...contactFormData, operational_hours: e.target.value })}
+                                                placeholder="Senin - Jumat: 08:00 - 17:00 WIB"
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div className="flex items-center justify-end gap-3 pt-4">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => setIsEditingContact(false)}
+                                            >
+                                                Batal
+                                            </Button>
+                                            <Button
+                                                type="submit"
+                                                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                                            >
+                                                <Save className="w-4 h-4 mr-2" />
+                                                Simpan
+                                            </Button>
+                                        </div>
+                                    </form>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <motion.div
+                                            whileHover={{ x: 5 }}
+                                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <MessageCircle className="w-5 h-5 text-green-600" />
+                                                </div>
+                                                <span className="text-gray-700 font-medium">WhatsApp CS</span>
+                                            </div>
+                                            <span className="text-gray-900 font-bold text-sm sm:text-base sm:ml-auto">{contactInfo.whatsapp}</span>
+                                        </motion.div>
+                                        <motion.div
+                                            whileHover={{ x: 5 }}
+                                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <Mail className="w-5 h-5 text-purple-600" />
+                                                </div>
+                                                <span className="text-gray-700 font-medium">Email</span>
+                                            </div>
+                                            <span className="text-gray-900 font-semibold text-xs sm:text-sm break-all sm:ml-auto">{contactInfo.email}</span>
+                                        </motion.div>
+                                        <motion.div
+                                            whileHover={{ x: 5 }}
+                                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <Clock className="w-5 h-5 text-blue-600" />
+                                                </div>
+                                                <span className="text-gray-700 font-medium">Jam Operasional</span>
+                                            </div>
+                                            <span className="text-gray-900 font-semibold text-xs sm:text-sm sm:ml-auto">{contactInfo.operationalHours}</span>
+                                        </motion.div>
+                                    </div>
+                                )}
                             </div>
                         </Card>
                     </motion.div>

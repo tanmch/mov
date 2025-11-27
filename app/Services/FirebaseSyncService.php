@@ -348,6 +348,79 @@ class FirebaseSyncService
     }
 
     /**
+     * Sync all robot mission results from Firebase
+     */
+    public function syncRobotMissionResults(): array
+    {
+        try {
+            $missionResults = $this->firebase->getDatabaseData('robot/mission_results');
+
+            if (!$missionResults || !is_array($missionResults)) {
+                return ['synced' => 0, 'message' => 'No robot mission results in Firebase'];
+            }
+
+            $synced = 0;
+            foreach ($missionResults as $scheduleKey => $result) {
+                if (!is_array($result)) continue;
+
+                // Extract schedule_id from key (schedule_123 -> 123)
+                $scheduleId = str_replace('schedule_', '', $scheduleKey);
+                if (!is_numeric($scheduleId)) continue;
+
+                $schedule = RobotSchedule::find($scheduleId);
+                if (!$schedule) {
+                    Log::warning("Schedule not found for mission result", [
+                        'schedule_id' => $scheduleId,
+                        'schedule_key' => $scheduleKey,
+                    ]);
+                    continue;
+                }
+
+                // Check if already synced (has completed_at and result_data)
+                if ($schedule->completed_at && $schedule->result_data) {
+                    continue; // Already synced
+                }
+
+                // Update schedule with mission result
+                $updateData = [
+                    'status' => ($result['success'] ?? false) ? 'completed' : 'failed',
+                    'progress_percentage' => 100,
+                    'result_data' => $result,
+                ];
+
+                if (isset($result['completed_at'])) {
+                    $updateData['completed_at'] = \Carbon\Carbon::createFromTimestampMs($result['completed_at']);
+                } else {
+                    $updateData['completed_at'] = now();
+                }
+
+                if (isset($result['started_at']) && !$schedule->started_at) {
+                    $updateData['started_at'] = \Carbon\Carbon::createFromTimestampMs($result['started_at']);
+                }
+
+                $schedule->update($updateData);
+                $synced++;
+
+                // Create notification if mission completed
+                if (isset($result['success']) && $result['success']) {
+                    $this->createMissionCompletedNotification($schedule, $result);
+                }
+            }
+
+            return [
+                'synced' => $synced,
+                'message' => "Synced {$synced} robot mission results"
+            ];
+
+        } catch (\Exception $e) {
+            Log::error("Failed to sync robot mission results from Firebase", [
+                'error' => $e->getMessage()
+            ]);
+            return ['synced' => 0, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
      * Create sensor alert notification
      */
     protected function createSensorAlert(Blok $blok, string $sensorType, float $value): void

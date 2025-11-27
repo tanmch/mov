@@ -32,7 +32,7 @@ return [
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 120),
+    'lifetime' => (int) env('SESSION_LIFETIME', 480), // 8 hours (480 minutes) - lebih lama untuk mengurangi 419 errors
 
     'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
 

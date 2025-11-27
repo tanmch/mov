@@ -41,12 +41,12 @@ export default function BackButton({
                 }}
                 whileTap={{ scale: 0.95 }}
                 className="group relative flex items-center gap-2 sm:gap-3 px-4 sm:px-5 py-2.5 sm:py-3 
-                         bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 
-                         hover:from-emerald-600 hover:via-green-600 hover:to-teal-600
-                         text-white font-semibold text-sm sm:text-base
+                         bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 
+                         hover:from-emerald-700 hover:via-green-700 hover:to-teal-700
+                         text-white font-bold text-sm sm:text-base
                          rounded-xl sm:rounded-2xl
                          shadow-lg hover:shadow-2xl hover:shadow-emerald-500/50
-                         border-2 border-white/20 hover:border-white/40
+                         border-2 border-white/30 hover:border-white/50
                          backdrop-blur-sm
                          transition-all duration-300
                          overflow-hidden
