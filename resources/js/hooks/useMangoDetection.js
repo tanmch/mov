@@ -3,7 +3,7 @@ import { useState, useRef, useCallback } from 'react';
 import * as ort from 'onnxruntime-web';
 
 const CLASS_NAMES = ['Half-Ripe', 'Not_Mango', 'OverRipe', 'Ripe', 'Unripe'];
-const MODEL_PATH = '/ml-models/best.onnx';
+const MODEL_PATH = '/ml-models/final2.onnx';
 const INPUT_SIZE = 640;
 const DEFAULT_CONF_THRESHOLD = 0.15;
 const DEFAULT_IOU_THRESHOLD = 0.5;
