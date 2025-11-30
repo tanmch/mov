@@ -10,7 +10,8 @@ import {
     Bot, Thermometer, Droplets, Sprout, TrendingUp, AlertCircle, 
     Battery, MapPin, Calendar, PieChart as PieChartIcon, 
     Zap, Activity, Clock, CheckCircle2, XCircle, RefreshCw, User, Shield,
-    Wifi, WifiOff, AlertTriangle, Filter, ChevronDown, BarChart3, Bell, X
+    Wifi, WifiOff, AlertTriangle, Filter, ChevronDown, BarChart3, Bell, X,
+    Camera, FileText, ExternalLink, Lightbulb, Trash2, CheckCircle, Sparkles
 } from 'lucide-react';
 import { LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { database } from '@/config/firebase';
@@ -18,7 +19,8 @@ import { ref, onValue, off } from 'firebase/database';
 import AnimatedBackground from '@/Components/AnimatedBackground';
 import { useHeaderOffset } from '@/hooks/useHeaderOffset';
 import { setLocalStorageDebounced, getLocalStorage } from '@/utils/localStorage';
-import BackButton from '@/Components/BackButton';
+import { useChatNotifications } from '@/hooks/useChatNotifications';
+import ChatNotificationToast from '@/Components/ChatNotificationToast';
 
 export default function Dashboard({ robotStatus, maturityData = { average: [], perBlok: [] }, sensorData, trendData, notifications, upcomingSchedules, bloks = [], blokOptions = [], selectedTimeRange: initialTimeRange = '24h', selectedBlokId: initialBlokId = 'average', thresholds = {} }) {
     const { auth } = usePage().props;
@@ -85,6 +87,16 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
     const [toastNotification, setToastNotification] = useState(null); // Only show latest toast
     const previousSensorStatusRef = useRef({}); // Track previous sensor status to detect changes
     const notificationCooldownRef = useRef({}); // Track notification cooldown to prevent spam
+    const [deletedBackendNotifications, setDeletedBackendNotifications] = useState(() => {
+        // Load from localStorage
+        const saved = getLocalStorage('deletedBackendNotifications', []);
+        return saved;
+    });
+    const [deleteToast, setDeleteToast] = useState({ show: false, message: '', count: 0, type: 'single' }); // Toast for delete success
+    const [deleteModal, setDeleteModal] = useState({ isOpen: false, type: 'all', count: 0 }); // Modal for delete confirmation
+    
+    // Chat notifications
+    const { latestNotification: latestChatNotification, clearLatestNotification: clearChatNotification } = useChatNotifications();
     
     // Update ref when selectedBlokId changes
     useEffect(() => {
@@ -132,6 +144,7 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
             if (!event.target.closest('.dropdown-container')) {
                 setIsDropdownOpenKondisi(false);
                 setIsDropdownOpenTren(false);
+                setIsDropdownOpenMaturity(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -290,10 +303,11 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
         const activeListeners = new Set();
 
         bloksToListen.forEach(blok => {
-            const kebunId = blok.kebun_id || blok.kebun?.id;
+            // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+            const kebunId = 1;
             const blokCode = blok.code;
             
-            if (!kebunId || !blokCode) return;
+            if (!blokCode) return;
 
             const firebasePath = `kebuns/kebun_${kebunId}/bloks/${blokCode}/sensors`;
             const sensorRef = ref(database, firebasePath);
@@ -333,11 +347,14 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                             // 1. Status changed (not initial load)
                             // 2. Status is warning or critical
                             // 3. Previous status was not undefined (to avoid triggering on initial load or UI changes)
-                            // 4. Previous status was normal (to avoid duplicate notifications when status changes from warning to critical)
+                            // 4. Previous status was normal (to avoid duplicate notifications when status changes from normal to warning/critical)
+                            // 5. Or status is warning/critical and previous status was different (to catch all warning/critical changes)
                             if (previousStatus !== undefined && 
                                 previousStatus !== status && 
                                 (status === 'warning' || status === 'critical') &&
-                                (previousStatus === 'normal' || (previousStatus === 'warning' && status === 'critical'))) {
+                                (previousStatus === 'normal' || 
+                                 (previousStatus === 'warning' && status === 'critical') ||
+                                 (status === 'warning' && previousStatus !== 'warning'))) {
                                 // Check cooldown to prevent spam (5 seconds cooldown for same sensor+blok)
                                 const cooldownKey = sensorKey;
                                 const now = Date.now();
@@ -1086,6 +1103,50 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
         return selected?.label || 'Pilih Blok';
     };
     
+    // Get selected maturity blok label
+    const getSelectedMaturityBlokLabel = () => {
+        if (selectedMaturityBlokId === 'average') {
+            return '📊 Rata-rata Semua Blok';
+        }
+        const selected = enhancedBlokOptions.find(opt => opt.value.toString() === selectedMaturityBlokId.toString());
+        return selected?.label || 'Pilih Blok';
+    };
+    
+    // Get maturity data based on selection (average or per blok)
+    const getMaturityChartData = () => {
+        if (selectedMaturityBlokId === 'average') {
+            return maturityData.average || maturityData || [];
+        }
+        
+        // Find selected blok data - try to match by code first, then by id
+        const selectedBlokData = maturityData.perBlok?.find(blok => {
+            const blokIdStr = selectedMaturityBlokId.toString();
+            return blok.blok_id?.toString() === blokIdStr || 
+                   blok.blok_code === blokIdStr ||
+                   blok.blok_code === selectedBlokId?.toString();
+        });
+        
+        // If not found in perBlok, try to find from bloks array
+        if (!selectedBlokData && bloks.length > 0) {
+            const selectedBlok = bloks.find(b => 
+                b.id?.toString() === selectedMaturityBlokId.toString() ||
+                b.code === selectedMaturityBlokId.toString()
+            );
+            
+            if (selectedBlok) {
+                // Return default data structure if blok found but no maturity data
+                return [
+                    { name: 'Mentah', value: 0, color: '#ef4444' },
+                    { name: 'Hampir Matang', value: 0, color: '#f59e0b' },
+                    { name: 'Matang', value: 0, color: '#22c55e' },
+                    { name: 'Lewat Matang', value: 0, color: '#6b7280' },
+                ];
+            }
+        }
+        
+        return selectedBlokData?.data || maturityData.average || maturityData || [];
+    };
+    
     // Handle time range change (only update state, data filtered from Firebase)
     const handleTimeRangeChange = (range) => {
         setSelectedTimeRange(range);
@@ -1190,11 +1251,6 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                 
                 {/* Content */}
                 <div className="relative z-10 p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
-                    {/* Back Button */}
-                    <div className="mb-4">
-                        <BackButton href="/dashboard" />
-                    </div>
-                    
                     {/* Header dengan Gradient & Animation */}
                     <motion.div
                         initial={{ opacity: 0, y: -20 }}
@@ -1535,22 +1591,88 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
 
                         {/* Grid Layout untuk Desktop */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                            {/* Persentase Kematangan - Enhanced Pie Chart */}
+                            {/* Persentase Kematangan - Enhanced Pie Chart dengan Blok Selection */}
                             <motion.div variants={itemVariants}>
                                 <Card className="p-4 md:p-6 bg-white/50 backdrop-blur-lg border-2 border-purple-200/50 shadow-xl">
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
-                                            <PieChartIcon className="w-5 h-5 text-white" />
+                                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
+                                                <PieChartIcon className="w-5 h-5 text-white" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-bold text-gray-800">Kematangan Buah</h3>
+                                                <p className="text-xs text-gray-500">Per Blok atau Rata-rata</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="text-sm font-bold text-gray-800">Kematangan Buah</h3>
-                                            <p className="text-xs text-gray-500">Rata-rata per Blok</p>
-                                        </div>
+                                        {enhancedBlokOptions.length > 0 && (
+                                            <div className="relative dropdown-container w-full sm:w-auto">
+                                                <motion.button
+                                                    whileHover={{ scale: 1.02 }}
+                                                    whileTap={{ scale: 0.98 }}
+                                                    onClick={() => {
+                                                        setIsDropdownOpenMaturity(!isDropdownOpenMaturity);
+                                                        setIsDropdownOpenKondisi(false);
+                                                        setIsDropdownOpenTren(false);
+                                                    }}
+                                                    className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl shadow-lg hover:shadow-xl transition-all font-medium text-xs w-full sm:min-w-[180px] justify-between"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <PieChartIcon className="w-4 h-4" />
+                                                        <span className="truncate">{getSelectedMaturityBlokLabel()}</span>
+                                                    </div>
+                                                    <motion.div
+                                                        animate={{ rotate: isDropdownOpenMaturity ? 180 : 0 }}
+                                                        transition={{ duration: 0.2 }}
+                                                    >
+                                                        <ChevronDown className="w-4 h-4" />
+                                                    </motion.div>
+                                                </motion.button>
+                                                
+                                                <AnimatePresence>
+                                                    {isDropdownOpenMaturity && (
+                                                        <motion.div
+                                                            initial={{ opacity: 0, y: -10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            exit={{ opacity: 0, y: -10 }}
+                                                            transition={{ duration: 0.2 }}
+                                                            className="absolute right-0 sm:right-0 left-0 sm:left-auto mt-2 w-full sm:w-64 bg-white rounded-xl shadow-2xl border-2 border-gray-100 overflow-hidden z-50"
+                                                        >
+                                                            <div className="max-h-60 overflow-y-auto">
+                                                                {enhancedBlokOptions.map((opt, index) => (
+                                                                    <motion.button
+                                                                        key={opt.value}
+                                                                        initial={{ opacity: 0, x: -20 }}
+                                                                        animate={{ opacity: 1, x: 0 }}
+                                                                        transition={{ delay: index * 0.05 }}
+                                                                        whileHover={{ backgroundColor: '#f3f4f6' }}
+                                                                        onClick={() => {
+                                                                            setSelectedMaturityBlokId(opt.value);
+                                                                            setIsDropdownOpenMaturity(false);
+                                                                        }}
+                                                                        className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-all ${
+                                                                            selectedMaturityBlokId === opt.value 
+                                                                                ? 'bg-gradient-to-r from-purple-50 to-pink-50 border-l-4 border-purple-500' 
+                                                                                : 'hover:bg-gray-50'
+                                                                        }`}
+                                                                    >
+                                                                        <span className="text-lg">{opt.icon}</span>
+                                                                        <span className="text-sm font-medium text-gray-700 flex-1">{opt.label}</span>
+                                                                        {selectedMaturityBlokId === opt.value && (
+                                                                            <CheckCircle2 className="w-4 h-4 text-purple-500" />
+                                                                        )}
+                                                                    </motion.button>
+                                                                ))}
+                                                            </div>
+                                                        </motion.div>
+                                                    )}
+                                                </AnimatePresence>
+                                            </div>
+                                        )}
                                     </div>
                                     <ResponsiveContainer width="100%" height={200}>
                                         <PieChart>
                                             <Pie
-                                                data={maturityData.average || maturityData}
+                                                data={getMaturityChartData()}
                                                 cx="50%"
                                                 cy="50%"
                                                 innerRadius={50}
@@ -1560,7 +1682,7 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                                 label={(entry) => `${entry.value}%`}
                                                 labelStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                                             >
-                                                {(maturityData.average || maturityData).map((entry, index) => (
+                                                {getMaturityChartData().map((entry, index) => (
                                                     <Cell key={`cell-${index}`} fill={entry.color} />
                                                 ))}
                                             </Pie>
@@ -1575,7 +1697,7 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="grid grid-cols-2 gap-2 mt-4">
-                                        {(maturityData.average || maturityData).map((item, index) => (
+                                        {getMaturityChartData().map((item, index) => (
                                             <motion.div
                                                 key={item.name}
                                                 initial={{ opacity: 0, x: -20 }}
@@ -1790,6 +1912,189 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                         );
                                     })()}
                                 </div>
+                                
+                                {/* Deskripsi Suhu dan Kematangan */}
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.3 }}
+                                    className="mt-3 p-3 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 shadow-md"
+                                >
+                                    <div className="flex items-start gap-2 mb-2">
+                                        <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                                            <span className="text-lg">📊</span>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="font-bold text-gray-800 mb-1.5 text-sm">Analisis Suhu & Kematangan Buah Mangga</h4>
+                                            <p className="text-xs text-gray-700 mb-2 leading-relaxed">
+                                                Suhu udara memengaruhi proses pematangan buah mangga. Suhu optimal untuk pematangan mangga adalah antara 25-30°C. 
+                                                Suhu yang terlalu tinggi dapat mempercepat pematangan namun mengurangi kualitas, sedangkan suhu rendah memperlambat proses pematangan.
+                                            </p>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                                                {/* Estimasi Hari Matang */}
+                                                {(() => {
+                                                    const maturityData = getMaturityChartData();
+                                                    const matangData = maturityData.find(m => m.name === 'Matang');
+                                                    const hampirMatangData = maturityData.find(m => m.name === 'Hampir Matang');
+                                                    const matangPercent = matangData?.value || 0;
+                                                    const hampirMatangPercent = hampirMatangData?.value || 0;
+                                                    const totalMaturity = matangPercent + hampirMatangPercent;
+                                                    
+                                                    // Hitung estimasi hari matang berdasarkan persentase
+                                                    let estimatedDays = 0;
+                                                    if (totalMaturity < 20) {
+                                                        estimatedDays = 10 + Math.floor((20 - totalMaturity) / 5);
+                                                    } else if (totalMaturity < 50) {
+                                                        estimatedDays = 5 + Math.floor((50 - totalMaturity) / 10);
+                                                    } else if (totalMaturity < 80) {
+                                                        estimatedDays = 2 + Math.floor((80 - totalMaturity) / 15);
+                                                    } else {
+                                                        estimatedDays = 0;
+                                                    }
+                                                    
+                                                    // Adjust berdasarkan suhu
+                                                    const suhu = displayedData.suhuUdara || 0;
+                                                    if (suhu > 32) {
+                                                        estimatedDays = Math.max(0, estimatedDays - 2); // Suhu tinggi mempercepat
+                                                    } else if (suhu < 22) {
+                                                        estimatedDays = estimatedDays + 3; // Suhu rendah memperlambat
+                                                    }
+                                                    
+                                                    const selectedBlok = selectedBlokId === 'average' ? 'Semua Blok' : getSelectedBlokLabel();
+                                                    
+                                                    return (
+                                                        <div className="bg-white rounded-lg p-2 border border-green-200">
+                                                            <p className="text-xs font-semibold text-gray-800 mb-0.5">
+                                                                📅 Estimasi Waktu Matang
+                                                            </p>
+                                                            <p className="text-xs text-gray-700">
+                                                                Blok <span className="font-bold text-green-700">{selectedBlok}</span> diperkirakan matang dalam{' '}
+                                                                <span className="font-bold text-orange-600">{estimatedDays} hari</span>.
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                })()}
+                                                
+                                                {/* Waktu Panen Optimal */}
+                                                {(() => {
+                                                    const suhu = displayedData.suhuUdara || 0;
+                                                    // Waktu panen optimal: pagi hari (6-9 AM) saat suhu belum terlalu tinggi
+                                                    // Atau sore hari (4-6 PM) saat suhu mulai turun
+                                                    const now = new Date();
+                                                    const currentHour = now.getHours();
+                                                    
+                                                    let optimalTime = '';
+                                                    let optimalHour = '';
+                                                    
+                                                    if (currentHour >= 6 && currentHour < 9) {
+                                                        optimalTime = 'Pagi';
+                                                        optimalHour = '06:00 - 09:00';
+                                                    } else if (currentHour >= 16 && currentHour < 18) {
+                                                        optimalTime = 'Sore';
+                                                        optimalHour = '16:00 - 18:00';
+                                                    } else if (currentHour < 6 || currentHour >= 18) {
+                                                        optimalTime = 'Pagi';
+                                                        optimalHour = '06:00 - 09:00';
+                                                    } else {
+                                                        optimalTime = 'Sore';
+                                                        optimalHour = '16:00 - 18:00';
+                                                    }
+                                                    
+                                                    // Adjust berdasarkan suhu
+                                                    if (suhu > 30) {
+                                                        optimalTime = 'Pagi';
+                                                        optimalHour = '06:00 - 09:00';
+                                                    } else if (suhu < 25) {
+                                                        optimalTime = 'Siang';
+                                                        optimalHour = '10:00 - 14:00';
+                                                    }
+                                                    
+                                                    return (
+                                                        <div className="bg-white rounded-lg p-2 border border-green-200">
+                                                            <p className="text-xs font-semibold text-gray-800 mb-0.5">
+                                                                ⏰ Waktu Panen & Pemasaran Optimal
+                                                            </p>
+                                                            <p className="text-xs text-gray-700">
+                                                                Waktu yang tepat untuk panen dan dipasarkan adalah pada{' '}
+                                                                <span className="font-bold text-green-700">{optimalTime}</span> hari, 
+                                                                yaitu pukul <span className="font-bold text-orange-600">{optimalHour}</span>.
+                                                                {suhu > 30 && ' Suhu tinggi, disarankan panen pagi hari.'}
+                                                                {suhu >= 25 && suhu <= 30 && ' Suhu optimal untuk panen.'}
+                                                                {suhu < 25 && ' Suhu rendah, panen dapat dilakukan siang hari.'}
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+                                            
+                                            {/* Quick Actions */}
+                                            <div className="flex flex-col gap-2 mt-2 pt-2 border-t border-green-200">
+                                                <span className="text-xs font-semibold text-gray-700 mb-1">Aksi Cepat:</span>
+                                                <div className="flex flex-wrap gap-2">
+                                                    <motion.button
+                                                        whileHover={{ scale: 1.05 }}
+                                                        whileTap={{ scale: 0.95 }}
+                                                        onClick={() => router.visit('/deteksi')}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg shadow-md hover:shadow-lg transition-all font-medium text-xs"
+                                                    >
+                                                        <Camera className="w-3.5 h-3.5" />
+                                                        <span>Deteksi Kematangan</span>
+                                                    </motion.button>
+                                                    <motion.button
+                                                        whileHover={{ scale: 1.05 }}
+                                                        whileTap={{ scale: 0.95 }}
+                                                        onClick={() => router.visit('/laporan')}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg shadow-md hover:shadow-lg transition-all font-medium text-xs"
+                                                    >
+                                                        <FileText className="w-3.5 h-3.5" />
+                                                        <span>Lihat Laporan</span>
+                                                        <ExternalLink className="w-3 h-3" />
+                                                    </motion.button>
+                                                </div>
+                                                
+                                                {/* Quick Tips */}
+                                                {(() => {
+                                                    const suhu = displayedData.suhuUdara || 0;
+                                                    const maturityData = getMaturityChartData();
+                                                    const matangData = maturityData.find(m => m.name === 'Matang');
+                                                    const matangPercent = matangData?.value || 0;
+                                                    
+                                                    let tip = '';
+                                                    let tipColor = 'from-blue-50 to-cyan-50';
+                                                    let tipBorder = 'border-blue-200';
+                                                    
+                                                    if (suhu > 32) {
+                                                        tip = '💡 Suhu tinggi! Pastikan penyiraman cukup untuk menjaga kualitas buah.';
+                                                        tipColor = 'from-orange-50 to-red-50';
+                                                        tipBorder = 'border-orange-200';
+                                                    } else if (suhu < 22) {
+                                                        tip = '💡 Suhu rendah. Proses pematangan mungkin lebih lambat.';
+                                                        tipColor = 'from-blue-50 to-indigo-50';
+                                                        tipBorder = 'border-blue-200';
+                                                    } else if (matangPercent > 50) {
+                                                        tip = '💡 Banyak buah matang! Siapkan rencana panen dan pemasaran.';
+                                                        tipColor = 'from-green-50 to-emerald-50';
+                                                        tipBorder = 'border-green-200';
+                                                    } else if (matangPercent > 30) {
+                                                        tip = '💡 Buah mulai matang. Lakukan monitoring lebih intensif.';
+                                                        tipColor = 'from-yellow-50 to-amber-50';
+                                                        tipBorder = 'border-yellow-200';
+                                                    }
+                                                    
+                                                    if (tip) {
+                                                        return (
+                                                            <div className={`mt-2 p-2 bg-gradient-to-br ${tipColor} rounded-lg border ${tipBorder} text-xs text-gray-700`}>
+                                                                {tip}
+                                                            </div>
+                                                        );
+                                                    }
+                                                    return null;
+                                                })()}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
                             </motion.div>
                         </div>
 
@@ -1825,10 +2130,18 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                                         whileHover={{ scale: 1.05 }}
                                                         whileTap={{ scale: 0.95 }}
                                                         onClick={() => {
-                                                            if (confirm('Yakin ingin menghapus semua notifikasi?')) {
-                                                                setRealtimeNotifications([]);
-                                                                setLocalStorageDebounced('dashboardNotifications', []);
-                                                            }
+                                                            // Calculate total notifications
+                                                            const backendNotifs = (notifications || []).filter(backendNotif => {
+                                                                const notInRealtime = !realtimeNotifications.some(realtimeNotif => 
+                                                                    realtimeNotif.blok === backendNotif.blok && 
+                                                                    realtimeNotif.sensor === backendNotif.sensor &&
+                                                                    Math.abs(realtimeNotif.timestamp - (backendNotif.timestamp || 0)) < 60000
+                                                                );
+                                                                const notDeleted = !deletedBackendNotifications.includes(backendNotif.id);
+                                                                return notInRealtime && notDeleted;
+                                                            });
+                                                            const totalCount = realtimeNotifications.length + backendNotifs.length;
+                                                            setDeleteModal({ isOpen: true, type: 'all', count: totalCount });
                                                         }}
                                                         className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors"
                                                     >
@@ -1851,11 +2164,14 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                         // Filter out duplicates by checking if backend notification already exists in realtime
                                         const backendNotifs = (notifications || []).filter(backendNotif => {
                                             // Check if this backend notification doesn't already exist in realtime notifications
-                                            return !realtimeNotifications.some(realtimeNotif => 
+                                            const notInRealtime = !realtimeNotifications.some(realtimeNotif => 
                                                 realtimeNotif.blok === backendNotif.blok && 
                                                 realtimeNotif.sensor === backendNotif.sensor &&
                                                 Math.abs(realtimeNotif.timestamp - (backendNotif.timestamp || 0)) < 60000 // Within 1 minute
                                             );
+                                            // Also check if it's not deleted
+                                            const notDeleted = !deletedBackendNotifications.includes(backendNotif.id);
+                                            return notInRealtime && notDeleted;
                                         });
                                         const allNotifications = [...realtimeNotifications, ...backendNotifs];
                                         
@@ -1865,6 +2181,16 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                                 {allNotifications.map((notif, index) => {
                                                     const isCritical = notif.type === 'critical';
                                                     const isWarning = notif.type === 'warning';
+                                                    const isChat = notif.notification_type === 'chat';
+                                                    const isRealtimeNotif = realtimeNotifications.some(n => n.id === notif.id);
+                                                    const isBackendNotif = backendNotifs.some(n => n.id === notif.id);
+                                                    
+                                                    // Handle click for chat notifications
+                                                    const handleNotificationClick = () => {
+                                                        if (isChat && notif.data?.chat_id) {
+                                                            router.visit(route('chat.index'));
+                                                        }
+                                                    };
                                                     
                                                     return (
                                                         <motion.div
@@ -1878,11 +2204,16 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                                                 delay: index < 3 ? index * 0.1 : 0
                                                             }}
                                                             whileHover={{ scale: 1.02, x: 5 }}
-                                                            className={`p-4 rounded-xl border-2 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all cursor-pointer ${
+                                                            onClick={isChat ? handleNotificationClick : undefined}
+                                                            className={`p-4 rounded-xl border-2 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all ${
+                                                                isChat ? 'cursor-pointer' : ''
+                                                            } ${
                                                                 isCritical
                                                                     ? 'bg-gradient-to-r from-red-50 via-orange-50 to-red-50 border-red-300/70 shadow-red-200/50'
                                                                     : isWarning
                                                                     ? 'bg-gradient-to-r from-yellow-50 via-amber-50 to-yellow-50 border-yellow-300/70 shadow-yellow-200/50'
+                                                                    : isChat
+                                                                    ? 'bg-gradient-to-r from-blue-50 via-purple-50 to-pink-50 border-blue-300/70 shadow-blue-200/50'
                                                                     : notif.type === 'success'
                                                                     ? 'bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 border-green-300/70 shadow-green-200/50'
                                                                     : 'bg-gradient-to-r from-blue-50 via-cyan-50 to-blue-50 border-blue-300/70 shadow-blue-200/50'
@@ -1916,19 +2247,94 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                                                                     className="w-2 h-2 bg-red-500 rounded-full"
                                                                                 />
                                                                             )}
-                                                                            {/* Only show delete button for real-time notifications */}
-                                                                            {realtimeNotifications.some(n => n.id === notif.id) && (
+                                                                            {/* Show delete button for both real-time and backend notifications */}
+                                                                            {(isRealtimeNotif || isBackendNotif) && (
                                                                                 <button
-                                                                                    onClick={(e) => {
+                                                                                    onClick={async (e) => {
                                                                                         e.stopPropagation();
-                                                                                        // Remove notification from real-time notifications
-                                                                                        setRealtimeNotifications(prev => {
-                                                                                            const updated = prev.filter(n => n.id !== notif.id);
-                                                                                            // Save to localStorage
-                                                                                            // Save to localStorage (debounced)
-                                                                                            setLocalStorageDebounced('dashboardNotifications', updated);
-                                                                                            return updated;
-                                                                                        });
+                                                                                        // Check if it's a real-time notification
+                                                                                        if (isRealtimeNotif) {
+                                                                                            // Remove notification from real-time notifications
+                                                                                            setRealtimeNotifications(prev => {
+                                                                                                const updated = prev.filter(n => n.id !== notif.id);
+                                                                                                // Save to localStorage (debounced)
+                                                                                                setLocalStorageDebounced('dashboardNotifications', updated);
+                                                                                                return updated;
+                                                                                            });
+                                                                                            
+                                                                                            // Show success toast
+                                                                                            setDeleteToast({
+                                                                                                show: true,
+                                                                                                message: 'Notifikasi berhasil dihapus!',
+                                                                                                count: 1,
+                                                                                                type: 'single'
+                                                                                            });
+                                                                                            
+                                                                                            // Auto-hide toast after 3 seconds
+                                                                                            setTimeout(() => {
+                                                                                                setDeleteToast(prev => ({ ...prev, show: false }));
+                                                                                            }, 3000);
+                                                                                        } else if (isBackendNotif) {
+                                                                                            // It's a backend notification - delete from database
+                                                                                            try {
+                                                                                                await router.delete(route('notifications.delete', notif.id), {
+                                                                                                    preserveScroll: true,
+                                                                                                    preserveState: true,
+                                                                                                    onSuccess: () => {
+                                                                                                        // Mark as deleted in localStorage
+                                                                                                        setDeletedBackendNotifications(prev => {
+                                                                                                            const updated = [...prev, notif.id];
+                                                                                                            setLocalStorageDebounced('deletedBackendNotifications', updated);
+                                                                                                            return updated;
+                                                                                                        });
+                                                                                                        
+                                                                                                        // Show success toast
+                                                                                                        setDeleteToast({
+                                                                                                            show: true,
+                                                                                                            message: 'Notifikasi berhasil dihapus!',
+                                                                                                            count: 1,
+                                                                                                            type: 'single'
+                                                                                                        });
+                                                                                                        
+                                                                                                        // Auto-hide toast after 3 seconds
+                                                                                                        setTimeout(() => {
+                                                                                                            setDeleteToast(prev => ({ ...prev, show: false }));
+                                                                                                        }, 3000);
+                                                                                                        
+                                                                                                        // Reload to refresh notifications
+                                                                                                        router.reload({ only: ['notifications'], preserveScroll: true });
+                                                                                                    },
+                                                                                                    onError: (errors) => {
+                                                                                                        console.error('Error deleting notification:', errors);
+                                                                                                        // Fallback: mark as deleted locally
+                                                                                                        setDeletedBackendNotifications(prev => {
+                                                                                                            const updated = [...prev, notif.id];
+                                                                                                            setLocalStorageDebounced('deletedBackendNotifications', updated);
+                                                                                                            return updated;
+                                                                                                        });
+                                                                                                        
+                                                                                                        // Show error toast
+                                                                                                        setDeleteToast({
+                                                                                                            show: true,
+                                                                                                            message: 'Gagal menghapus notifikasi. Silakan coba lagi.',
+                                                                                                            count: 0,
+                                                                                                            type: 'error'
+                                                                                                        });
+                                                                                                        setTimeout(() => {
+                                                                                                            setDeleteToast(prev => ({ ...prev, show: false }));
+                                                                                                        }, 3000);
+                                                                                                    }
+                                                                                                });
+                                                                                            } catch (error) {
+                                                                                                console.error('Error deleting notification:', error);
+                                                                                                // Fallback: mark as deleted locally
+                                                                                                setDeletedBackendNotifications(prev => {
+                                                                                                    const updated = [...prev, notif.id];
+                                                                                                    setLocalStorageDebounced('deletedBackendNotifications', updated);
+                                                                                                    return updated;
+                                                                                                });
+                                                                                            }
+                                                                                        }
                                                                                     }}
                                                                                     className="p-1 hover:bg-red-100 rounded-full transition-colors group"
                                                                                     title="Hapus notifikasi"
@@ -2449,6 +2855,341 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                     </motion.div>
                 </div>
             </div>
+
+            {/* Delete Confirmation Modal */}
+            <AnimatePresence>
+                {deleteModal.isOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                        onClick={() => setDeleteModal({ isOpen: false, type: 'all', count: 0 })}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border-2 border-red-200 overflow-hidden"
+                        >
+                            {/* Decorative Background */}
+                            <div className="absolute inset-0 bg-gradient-to-br from-red-50/50 to-orange-50/50"></div>
+                            
+                            {/* Animated Glow Effect */}
+                            <motion.div
+                                className="absolute -inset-1 opacity-30 blur-xl bg-red-400"
+                                animate={{
+                                    opacity: [0.2, 0.4, 0.2],
+                                    scale: [1, 1.05, 1],
+                                }}
+                                transition={{
+                                    duration: 2,
+                                    repeat: Infinity,
+                                    ease: "easeInOut",
+                                }}
+                            />
+
+                            <div className="relative z-10 p-6">
+                                {/* Icon */}
+                                <motion.div
+                                    initial={{ scale: 0, rotate: -180 }}
+                                    animate={{ scale: 1, rotate: 0 }}
+                                    transition={{
+                                        type: "spring",
+                                        stiffness: 200,
+                                        damping: 15,
+                                    }}
+                                    className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-red-500 to-orange-600 rounded-full flex items-center justify-center shadow-lg"
+                                >
+                                    <Trash2 className="w-8 h-8 text-white" />
+                                </motion.div>
+
+                                {/* Title */}
+                                <h3 className="text-xl font-bold text-gray-800 text-center mb-2">
+                                    Hapus Semua Notifikasi?
+                                </h3>
+
+                                {/* Message */}
+                                <p className="text-sm text-gray-600 text-center mb-1">
+                                    {deleteModal.count > 0 ? (
+                                        <>
+                                            Anda akan menghapus <span className="font-bold text-red-600">{deleteModal.count}</span> notifikasi.
+                                        </>
+                                    ) : (
+                                        'Anda akan menghapus semua notifikasi.'
+                                    )}
+                                </p>
+                                <p className="text-xs text-gray-500 text-center mb-6">
+                                    Tindakan ini tidak dapat dibatalkan.
+                                </p>
+
+                                {/* Buttons */}
+                                <div className="flex gap-3">
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={() => setDeleteModal({ isOpen: false, type: 'all', count: 0 })}
+                                        className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
+                                    >
+                                        Batal
+                                    </motion.button>
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                        onClick={async () => {
+                                            // Delete all real-time notifications
+                                            setRealtimeNotifications([]);
+                                            setLocalStorageDebounced('dashboardNotifications', []);
+                                            
+                                            // Delete all backend notifications from database
+                                            try {
+                                                await router.delete(route('notifications.delete-all'), {
+                                                    preserveScroll: true,
+                                                    preserveState: true,
+                                                    onSuccess: (page) => {
+                                                        // Mark all backend notifications as deleted in localStorage
+                                                        const allBackendIds = (notifications || []).map(n => n.id);
+                                                        setDeletedBackendNotifications(allBackendIds);
+                                                        setLocalStorageDebounced('deletedBackendNotifications', allBackendIds);
+                                                        
+                                                        // Show success toast
+                                                        const totalCount = deleteModal.count;
+                                                        setDeleteToast({
+                                                            show: true,
+                                                            message: `Semua notifikasi (${totalCount}) berhasil dihapus!`,
+                                                            count: totalCount,
+                                                            type: 'all'
+                                                        });
+                                                        
+                                                        // Auto-hide toast after 4 seconds
+                                                        setTimeout(() => {
+                                                            setDeleteToast(prev => ({ ...prev, show: false }));
+                                                        }, 4000);
+                                                        
+                                                        // Close modal
+                                                        setDeleteModal({ isOpen: false, type: 'all', count: 0 });
+                                                        
+                                                        // Reload to refresh notifications
+                                                        router.reload({ only: ['notifications'], preserveScroll: true });
+                                                    },
+                                                    onError: (errors) => {
+                                                        console.error('Error deleting notifications:', errors);
+                                                        setDeleteToast({
+                                                            show: true,
+                                                            message: 'Gagal menghapus beberapa notifikasi. Silakan coba lagi.',
+                                                            count: 0,
+                                                            type: 'error'
+                                                        });
+                                                        setTimeout(() => {
+                                                            setDeleteToast(prev => ({ ...prev, show: false }));
+                                                        }, 4000);
+                                                        setDeleteModal({ isOpen: false, type: 'all', count: 0 });
+                                                    }
+                                                });
+                                            } catch (error) {
+                                                console.error('Error deleting notifications:', error);
+                                                setDeleteToast({
+                                                    show: true,
+                                                    message: 'Gagal menghapus notifikasi. Silakan coba lagi.',
+                                                    count: 0,
+                                                    type: 'error'
+                                                });
+                                                setTimeout(() => {
+                                                    setDeleteToast(prev => ({ ...prev, show: false }));
+                                                }, 4000);
+                                                setDeleteModal({ isOpen: false, type: 'all', count: 0 });
+                                            }
+                                        }}
+                                        className="flex-1 px-4 py-2.5 bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white font-medium rounded-xl shadow-lg transition-all"
+                                    >
+                                        Hapus
+                                    </motion.button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Delete Success Toast - Beautiful and Attractive */}
+            <AnimatePresence>
+                {deleteToast.show && (
+                    <motion.div
+                        key="delete-toast"
+                        initial={{ opacity: 0, x: 400, scale: 0.8, y: -20 }}
+                        animate={{ 
+                            opacity: 1, 
+                            x: 0, 
+                            scale: 1, 
+                            y: 0,
+                        }}
+                        exit={{ opacity: 0, x: 400, scale: 0.8, y: -20 }}
+                        transition={{ 
+                            type: "spring", 
+                            stiffness: 300, 
+                            damping: 30 
+                        }}
+                        style={{
+                            top: `${topOffset + (toastNotification ? 80 : 0)}px`,
+                        }}
+                        className="fixed right-2 sm:right-4 left-2 sm:left-auto z-[10000] max-w-md w-auto sm:w-full md:w-auto"
+                    >
+                        <motion.div
+                            className={`relative overflow-hidden rounded-2xl shadow-2xl backdrop-blur-xl border-2 ${
+                                deleteToast.type === 'error'
+                                    ? 'bg-gradient-to-br from-red-50/95 to-rose-50/95 border-red-200/50'
+                                    : 'bg-gradient-to-br from-green-50/95 to-emerald-50/95 border-green-200/50'
+                            }`}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                        >
+                            {/* Decorative Background */}
+                            <div className={`absolute inset-0 opacity-30 ${
+                                deleteToast.type === 'error'
+                                    ? 'bg-gradient-to-br from-red-400/20 to-rose-400/20'
+                                    : 'bg-gradient-to-br from-green-400/20 to-emerald-400/20'
+                            }`}></div>
+                            
+                            {/* Animated Glow Effect */}
+                            <motion.div
+                                className={`absolute -inset-1 opacity-50 blur-xl ${
+                                    deleteToast.type === 'error' ? 'bg-red-400' : 'bg-green-400'
+                                }`}
+                                animate={{
+                                    opacity: [0.3, 0.6, 0.3],
+                                    scale: [1, 1.05, 1],
+                                }}
+                                transition={{
+                                    duration: 2,
+                                    repeat: Infinity,
+                                    ease: "easeInOut",
+                                }}
+                            />
+
+                            <div className="relative z-10 p-5">
+                                <div className="flex items-start gap-4">
+                                    {/* Icon Container */}
+                                    <motion.div
+                                        initial={{ scale: 0, rotate: -180 }}
+                                        animate={{ scale: 1, rotate: 0 }}
+                                        transition={{
+                                            type: "spring",
+                                            stiffness: 200,
+                                            damping: 15,
+                                            delay: 0.1,
+                                        }}
+                                        className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center shadow-lg ${
+                                            deleteToast.type === 'error'
+                                                ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white'
+                                                : 'bg-gradient-to-br from-green-500 to-emerald-600 text-white'
+                                        }`}
+                                    >
+                                        {deleteToast.type === 'error' ? (
+                                            <XCircle className="w-6 h-6" />
+                                        ) : deleteToast.type === 'all' ? (
+                                            <Trash2 className="w-6 h-6" />
+                                        ) : (
+                                            <CheckCircle className="w-6 h-6" />
+                                        )}
+                                    </motion.div>
+
+                                    {/* Content */}
+                                    <div className="flex-1 min-w-0">
+                                        <motion.h3
+                                            initial={{ opacity: 0, y: -10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ delay: 0.2 }}
+                                            className={`font-bold text-lg mb-1 ${
+                                                deleteToast.type === 'error' ? 'text-red-800' : 'text-green-800'
+                                            }`}
+                                        >
+                                            {deleteToast.type === 'error' 
+                                                ? 'Gagal!' 
+                                                : deleteToast.type === 'all'
+                                                ? 'Berhasil Dihapus!'
+                                                : 'Berhasil Dihapus!'
+                                            }
+                                        </motion.h3>
+                                        <motion.p
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            transition={{ delay: 0.3 }}
+                                            className={`text-sm ${
+                                                deleteToast.type === 'error' ? 'text-red-700' : 'text-green-700'
+                                            }`}
+                                        >
+                                            {deleteToast.message}
+                                        </motion.p>
+                                        
+                                        {/* Count Badge for "all" type */}
+                                        {deleteToast.type === 'all' && deleteToast.count > 0 && (
+                                            <motion.div
+                                                initial={{ scale: 0 }}
+                                                animate={{ scale: 1 }}
+                                                transition={{ delay: 0.4, type: "spring" }}
+                                                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-green-100 rounded-full border border-green-300"
+                                            >
+                                                <Sparkles className="w-3.5 h-3.5 text-green-600" />
+                                                <span className="text-xs font-bold text-green-700">
+                                                    {deleteToast.count} notifikasi
+                                                </span>
+                                            </motion.div>
+                                        )}
+                                    </div>
+
+                                    {/* Close Button */}
+                                    <motion.button
+                                        whileHover={{ scale: 1.1, rotate: 90 }}
+                                        whileTap={{ scale: 0.9 }}
+                                        onClick={() => setDeleteToast(prev => ({ ...prev, show: false }))}
+                                        className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                                            deleteToast.type === 'error'
+                                                ? 'hover:bg-red-100 text-red-600'
+                                                : 'hover:bg-green-100 text-green-600'
+                                        }`}
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </motion.button>
+                                </div>
+
+                                {/* Sparkle Effects */}
+                                {deleteToast.type !== 'error' && (
+                                    <div className="absolute top-2 right-2 pointer-events-none">
+                                        <motion.div
+                                            animate={{
+                                                rotate: [0, 360],
+                                                scale: [1, 1.2, 1],
+                                            }}
+                                            transition={{
+                                                duration: 3,
+                                                repeat: Infinity,
+                                                ease: "easeInOut",
+                                            }}
+                                        >
+                                            <Sparkles className={`w-4 h-4 ${
+                                                deleteToast.type === 'error' ? 'text-red-400' : 'text-green-400'
+                                            } opacity-50`} />
+                                        </motion.div>
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Chat Notification Toast */}
+            <ChatNotificationToast
+                notification={latestChatNotification}
+                onClose={clearChatNotification}
+                onClick={() => {
+                    if (latestChatNotification?.data?.chat_id) {
+                        router.visit(route('chat.index'));
+                    }
+                }}
+            />
         </AuthenticatedLayout>
     );
 }

@@ -48,19 +48,18 @@ class DashboardController extends Controller
         // Get upcoming robot schedules
         $upcomingSchedules = $this->getUpcomingSchedules();
         
-        // Get bloks for Firebase real-time listener
-        // K-Petani and Petani see the same kebuns (owned by K-Petani)
-        if ($user->role === 'k-petani') {
-            // K-Petani sees kebuns they own
-            $bloks = Blok::whereHas('kebun', function($query) use ($user) {
-                $query->where('owner_id', $user->id);
-            })->with('kebun')->get();
-        } else {
-            // Petani sees kebuns owned by K-Petani users
-            $bloks = Blok::whereHas('kebun.owner', function($query) {
-                $query->where('role', 'k-petani');
-            })->with('kebun')->get();
-        }
+        // Get bloks for dropdown - semua user (K-petani dan petani) bisa melihat semua blok
+        // Tidak ada filter berdasarkan user, semua blok tersedia untuk semua user
+        // Hapus duplikat berdasarkan code (jika ada blok dengan code yang sama, ambil yang pertama)
+        $bloks = Blok::with('kebun')
+            ->orderBy('code')
+            ->orderBy('name')
+            ->get()
+            ->unique(function($blok) {
+                // Gunakan code sebagai key untuk unique, jika code null gunakan id
+                return $blok->code ?? $blok->id;
+            })
+            ->values(); // Re-index array setelah unique
         
         $bloks = $bloks->map(function($blok) {
             return [
@@ -75,8 +74,10 @@ class DashboardController extends Controller
             ];
         });
 
-        // Get blok options for dropdown
-        $blokOptions = $bloks->map(function($blok) {
+        // Get blok options for dropdown - hapus duplikat lagi setelah mapping
+        $blokOptions = $bloks->unique(function($blok) {
+            return $blok['code'] ?? $blok['id'];
+        })->values()->map(function($blok) {
             return [
                 'value' => $blok['id'],
                 'label' => $blok['code'] ?? "Blok #{$blok['id']}",
@@ -150,21 +151,19 @@ class DashboardController extends Controller
 
     /**
      * Get maturity data from all bloks (per blok and average)
+     * All K-Petani and Petani see the same data
      */
     protected function getMaturityData(): array
     {
         $user = Auth::user();
         
-        // K-Petani and Petani see the same kebuns
-        if ($user->role === 'k-petani') {
-            $bloks = Blok::whereHas('kebun', function($query) use ($user) {
-                $query->where('owner_id', $user->id);
-            })->get();
-        } else {
-            $bloks = Blok::whereHas('kebun.owner', function($query) {
-                $query->where('role', 'k-petani');
-            })->get();
-        }
+        // All K-Petani and Petani see the same bloks (from any K-Petani)
+        // Remove duplicates by code to ensure consistency
+        $bloks = Blok::whereHas('kebun.owner', function($query) {
+            $query->where('role', 'k-petani');
+        })->get()
+        ->unique('code') // Remove duplicates by code
+        ->values(); // Re-index array
 
         if ($bloks->isEmpty()) {
             return [
@@ -223,9 +222,12 @@ class DashboardController extends Controller
                 $query->where('owner_id', $user->id);
             })->pluck('id');
         } else {
+            // Remove duplicates by code (all K-Petani should have same bloks)
             $bloks = Blok::whereHas('kebun.owner', function($query) {
                 $query->where('role', 'k-petani');
-            })->pluck('id');
+            })->get()
+            ->unique('code') // Remove duplicates by code
+            ->pluck('id');
         }
 
         if ($bloks->isEmpty()) {
@@ -406,7 +408,7 @@ class DashboardController extends Controller
     {
         $notifications = Notification::where('user_id', $user->id)
             ->orderBy('created_at', 'desc')
-            ->limit(5)
+            ->limit(20) // Increased limit to include chat notifications
             ->get()
             ->map(function($notif) {
                 $timeAgo = $notif->created_at->diffForHumans();
@@ -421,6 +423,12 @@ class DashboardController extends Controller
                 } elseif ($notif->type === 'robot') {
                     $icon = '✅';
                     $type = 'success';
+                } elseif ($notif->type === 'chat') {
+                    $icon = '💬';
+                    $type = 'info';
+                } elseif ($notif->related_type === 'Question') {
+                    $icon = '💬';
+                    $type = 'info';
                 }
 
                 return [
@@ -429,6 +437,10 @@ class DashboardController extends Controller
                     'icon' => $icon,
                     'message' => $notif->message,
                     'time' => $timeAgo,
+                    'notification_type' => $notif->type, // Include original type
+                    'data' => $notif->data, // Include notification data
+                    'created_at' => $notif->created_at->toISOString(),
+                    'is_read' => $notif->is_read,
                 ];
             });
 

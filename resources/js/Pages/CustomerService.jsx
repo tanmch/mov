@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { Head } from '@inertiajs/react';
+import { Head, router, usePage, Link } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
@@ -10,13 +10,19 @@ import { useRole } from '@/hooks/useRole';
 import { 
     MessageCircle, Phone, Mail, User, Send, HeadphonesIcon, 
     FileQuestion, BookOpen, Lightbulb, Settings, ShieldCheck,
-    Sparkles, Zap, Clock, CheckCircle2
+    Sparkles, Zap, Clock, CheckCircle2, Edit, X, Save
 } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
 import BackButton from '@/Components/BackButton';
+import ApplicationLogo from '@/Components/ApplicationLogo';
 
-export default function CustomerService() {
+import ChatRoom from './CustomerService/ChatRoom';
+import GuestChatRoom from './CustomerService/GuestChatRoom';
+import FAQManagement from './CustomerService/FAQManagement';
+
+export default function CustomerService({ contactInfo: contactInfoProp, guestPrivateChats, faqs, categories }) {
     const { isKPetani, userRole } = useRole();
+    const { flash } = usePage().props;
     const [message, setMessage] = useState('');
     const [chatMessages, setChatMessages] = useState([
         {
@@ -28,13 +34,67 @@ export default function CustomerService() {
     ]);
     const chatEndRef = useRef(null);
     const [isTyping, setIsTyping] = useState(false);
+    const [hasRequestedCS, setHasRequestedCS] = useState(false);
+    const [myQuestions, setMyQuestions] = useState([]);
+    const [lastQuestionId, setLastQuestionId] = useState(null);
+    const [isEditingContact, setIsEditingContact] = useState(false);
+    const [activeTab, setActiveTab] = useState('guest-chat'); // 'guest-chat' or 'questions'
+    const [contactFormData, setContactFormData] = useState({
+        whatsapp: '',
+        phone: '',
+        email: '',
+        operational_hours: '',
+    });
 
-    // MOV Center Contact Info
-    const contactInfo = {
+    // MOV Center Contact Info - from database or default
+    const defaultContactInfo = {
         email: 'movproject03@gmail.com',
         phone: '+62 811-2019-210',
         whatsapp: '+62 811-2019-210',
         operationalHours: 'Senin - Jumat: 08:00 - 17:00 WIB',
+    };
+
+    const contactInfo = contactInfoProp ? {
+        email: contactInfoProp.email || defaultContactInfo.email,
+        phone: contactInfoProp.phone || defaultContactInfo.phone,
+        whatsapp: contactInfoProp.whatsapp || defaultContactInfo.whatsapp,
+        operationalHours: contactInfoProp.operational_hours || defaultContactInfo.operationalHours,
+    } : defaultContactInfo;
+
+    // Initialize form data when editing
+    useEffect(() => {
+        if (isEditingContact && contactInfoProp) {
+            setContactFormData({
+                whatsapp: contactInfoProp.whatsapp || '',
+                phone: contactInfoProp.phone || '',
+                email: contactInfoProp.email || '',
+                operational_hours: contactInfoProp.operational_hours || '',
+            });
+        }
+    }, [isEditingContact, contactInfoProp]);
+
+    const handleSaveContact = (e) => {
+        e.preventDefault();
+        
+        if (contactInfoProp?.id) {
+            // Update existing
+            router.put(route('contact-info.update', contactInfoProp.id), contactFormData, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsEditingContact(false);
+                    router.reload({ only: ['contactInfo'] });
+                },
+            });
+        } else {
+            // Create new
+            router.post(route('contact-info.store'), contactFormData, {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsEditingContact(false);
+                    router.reload({ only: ['contactInfo'] });
+                },
+            });
+        }
     };
 
     // Help Categories - Seperti Tokopedia & IPB Help Center
@@ -77,7 +137,7 @@ export default function CustomerService() {
     // FAQ - Berbeda untuk K-Petani dan Petani biasa
     const faqPetani = [
         {
-            question: 'Bagaimana cara menggunakan fitur deteksi AI?',
+            question: 'Bagaimana cara menggunakan fitur deteksi kematangan Buah berdasarkan analisis AI?',
             answer: 'Upload foto buah mangga melalui menu Deteksi. Sistem AI akan menganalisis tingkat kematangan secara otomatis dalam hitungan detik. Pastikan foto jelas dan pencahayaan cukup untuk hasil akurat.'
         },
         {
@@ -229,10 +289,12 @@ export default function CustomerService() {
             from: 'user',
             text: userMessage,
             time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            answeredAt: null,
+            readAt: null,
         };
 
         setChatMessages([...chatMessages, newMessage]);
-        setMessage('');
+        setMessage(''); // Clear input field after sending
         setIsTyping(true);
         
         // Keep focus on input and prevent page scroll
@@ -249,15 +311,56 @@ export default function CustomerService() {
             
             let botResponse;
             
-            // If user wants direct CS, skip auto-answer and go straight to CS
-            if (wantsDirectCS) {
-                botResponse = {
-                    id: chatMessages.length + 2,
-                    from: 'cs',
-                    text: `Terima kasih! Tim Customer Service MOV Center siap membantu Anda.\n\n📞 Hubungi kami:\n• WhatsApp: ${contactInfo.whatsapp}\n• Email: ${contactInfo.email}\n• Telepon: ${contactInfo.phone}\n\n⏰ Jam Operasional: ${contactInfo.operationalHours}\n\n💬 Kami akan merespons secepat mungkin!`,
-                    time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-                    isAutoAnswer: false,
-                };
+            // If user wants direct CS or has already requested CS, save to database and start chat
+            if (wantsDirectCS || hasRequestedCS) {
+                // Mark that user has requested CS - disable auto-answer from now on
+                const isFirstRequest = wantsDirectCS && !hasRequestedCS;
+                if (isFirstRequest) {
+                    setHasRequestedCS(true);
+                }
+                
+                // Save question to database
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                if (csrfToken && window.axios) {
+                    window.axios.post(route('questions.store'), {
+                        question: userMessage,
+                        category: 'general',
+                    }, {
+                        headers: {
+                            'X-CSRF-TOKEN': csrfToken,
+                            'Accept': 'application/json',
+                        },
+                    }).then((response) => {
+                        console.log('Question saved to database', response.data);
+                        // Start checking for answers
+                        if (response.data?.question_id) {
+                            setLastQuestionId(response.data.question_id);
+                            // Store question ID in chat message for tracking
+                            setChatMessages(prev => prev.map((msg, idx) => 
+                                idx === prev.length - 1 
+                                    ? { ...msg, questionId: response.data.question_id }
+                                    : msg
+                            ));
+                        }
+                    }).catch(err => {
+                        console.warn('Failed to save question:', err);
+                    });
+                }
+                
+                // Only show confirmation message once when first requesting CS
+                if (isFirstRequest) {
+                    botResponse = {
+                        id: Date.now() + Math.random(),
+                        from: 'cs',
+                        text: `Terima kasih! Chat room Anda sudah aktif. Tim Customer Service MOV Center akan merespons secepat mungkin! 💬`,
+                        time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                        isAutoAnswer: false,
+                    };
+                } else {
+                    // For subsequent messages in active chat, no bot response needed
+                    // The answer from CS will come through polling
+                    botResponse = null;
+                }
             } else {
                 const autoAnswer = findAnswerByKeyword(userMessage);
                 
@@ -271,18 +374,58 @@ export default function CustomerService() {
                         isAutoAnswer: true,
                     };
                 } else {
-                    // No auto-answer found - transfer to real CS
+                    // No auto-answer found - save question to database and transfer to real CS
+                    // Submit question to backend
+                    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                    if (csrfToken && window.axios) {
+                        window.axios.post(route('questions.store'), {
+                            question: userMessage,
+                            category: 'general',
+                        }, {
+                            headers: {
+                                'X-CSRF-TOKEN': csrfToken,
+                                'Accept': 'application/json',
+                            },
+                        }).then((response) => {
+                            if (response.data?.question_id) {
+                                setLastQuestionId(response.data.question_id);
+                                // Also set hasRequestedCS if not already set
+                                if (!hasRequestedCS) {
+                                    setHasRequestedCS(true);
+                                }
+                            }
+                        }).catch(err => {
+                            console.warn('Failed to save question:', err);
+                        });
+                    }
+                    
                     botResponse = {
                         id: chatMessages.length + 2,
                         from: 'cs',
-                        text: `Terima kasih atas pertanyaan Anda. Tim Customer Service MOV Center akan segera merespons pertanyaan Anda.\n\n📞 Untuk bantuan lebih cepat, hubungi kami:\n• WhatsApp: ${contactInfo.whatsapp}\n• Email: ${contactInfo.email}\n• Telepon: ${contactInfo.phone}\n\n⏰ Jam Operasional: ${contactInfo.operationalHours}`,
+                        text: `Terima kasih atas pertanyaan Anda. Pertanyaan Anda telah dicatat dan Tim Customer Service MOV Center akan segera merespons.\n\n📞 Untuk bantuan lebih cepat, hubungi kami:\n• WhatsApp: ${contactInfo.whatsapp}\n• Email: ${contactInfo.email}\n• Telepon: ${contactInfo.phone}\n\n⏰ Jam Operasional: ${contactInfo.operationalHours}`,
                         time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
                         isAutoAnswer: false,
                     };
                 }
             }
             
-            setChatMessages((prev) => [...prev, botResponse]);
+            // Only add bot response if it exists (avoid null responses and duplicates)
+            if (botResponse) {
+                setChatMessages((prev) => {
+                    // Check for duplicate before adding
+                    const isDuplicate = prev.some(msg => 
+                        msg.from === botResponse.from &&
+                        msg.text === botResponse.text &&
+                        Math.abs(new Date(msg.time) - new Date(botResponse.time)) < 2000 // Within 2 seconds
+                    );
+                    
+                    if (isDuplicate) {
+                        return prev;
+                    }
+                    
+                    return [...prev, botResponse];
+                });
+            }
         }, 1500);
     };
 
@@ -299,6 +442,240 @@ export default function CustomerService() {
             }
         }
     }, [chatMessages, isTyping]);
+
+    // Show flash messages
+    useEffect(() => {
+        if (flash?.success) {
+            alert(flash.success);
+        }
+    }, [flash]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            // Cleanup if needed
+        };
+    }, []);
+
+    // Check for answers from CS (polling every 2 seconds if user has requested CS)
+    useEffect(() => {
+        if (!hasRequestedCS) return;
+
+        let mounted = true;
+        const processedAnswerIds = new Set(); // Track which answers we've already shown
+
+        const checkForAnswers = () => {
+            if (!mounted) return;
+            
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+            if (!csrfToken || !window.axios) return;
+
+            window.axios.get(route('questions.my-questions'), {
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                },
+            }).then(response => {
+                if (!mounted) return;
+                
+                if (response.data?.success && response.data?.questions) {
+                    const questions = response.data?.questions || [];
+                    
+                    // Find questions with answers that we haven't shown yet
+                    questions.forEach(question => {
+                        // Check if question has answer (any status including pending)
+                        if (question.answer && question.answer.trim()) {
+                            
+                            // Create unique key for this answer using question ID and answer text hash
+                            const answerTextHash = question.answer.substring(0, 50); // Use first 50 chars for uniqueness
+                            const answerKey = `${question.id}_${answerTextHash}`;
+                            
+                            // Check if we already processed this answer
+                            if (processedAnswerIds.has(answerKey)) {
+                                return; // Skip if already shown
+                            }
+
+                            // Check if this question belongs to current user
+                            const isMyQuestion = lastQuestionId === question.id || 
+                                chatMessages.some(msg => msg.questionId === question.id) ||
+                                !lastQuestionId; // If no lastQuestionId, show all answered questions
+
+                            if (isMyQuestion) {
+                                // Mark as processed
+                                processedAnswerIds.add(answerKey);
+                                
+                                // Add answer to chat (regardless of status - pending, answered, or closed)
+                                const answerMessage = {
+                                    id: Date.now() + Math.random(),
+                                    from: 'cs',
+                                    text: question.answer,
+                                    time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+                                    isAutoAnswer: false,
+                                    questionId: question.id,
+                                    answeredAt: question.answered_at,
+                                    readAt: question.read_at,
+                                };
+                                
+                                // Mark as read when customer sees the answer
+                                if (question.answer && question.answered_at && !question.read_at) {
+                                    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                                    if (csrfToken && window.axios) {
+                                        window.axios.post(route('questions.mark-as-read', question.id), {}, {
+                                            headers: {
+                                                'X-CSRF-TOKEN': csrfToken,
+                                                'Accept': 'application/json',
+                                            },
+                                        }).catch(err => {
+                                            console.warn('Failed to mark as read:', err);
+                                        });
+                                    }
+                                }
+                                
+                                setChatMessages(prev => {
+                                    // Double check to avoid duplicates
+                                    const alreadyExists = prev.some(msg => 
+                                        msg.from === 'cs' && 
+                                        msg.questionId === question.id &&
+                                        msg.text === question.answer
+                                    );
+                                    
+                                    if (alreadyExists) {
+                                        return prev;
+                                    }
+                                    
+                                    return [...prev, answerMessage];
+                                });
+                            }
+                        }
+                    });
+                }
+            }).catch(err => {
+                if (mounted) {
+                    console.warn('Failed to check for answers:', err);
+                }
+            });
+        };
+
+        // Check immediately, then every 1.5 seconds (faster polling for real-time feel)
+        checkForAnswers();
+        const interval = setInterval(checkForAnswers, 1500);
+
+        return () => {
+            mounted = false;
+            clearInterval(interval);
+        };
+    }, [hasRequestedCS, lastQuestionId, chatMessages]);
+
+    // For K-Petani, show chat room interface
+    if (isKPetani) {
+        return (
+            <AuthenticatedLayout>
+                <Head title="MOV Center - Chat Room" />
+                <AnimatedBackground />
+                
+                <div className="min-h-screen py-6 md:py-8 px-4 sm:px-6 lg:px-8 relative">
+                    <div className="max-w-7xl mx-auto">
+                        {/* Back Button */}
+                        <div className="mb-4">
+                            <BackButton href="/dashboard" />
+                        </div>
+
+                        {/* Header */}
+                        <motion.div
+                            initial={{ opacity: 0, y: -20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mb-6"
+                        >
+                            <div className="flex items-center gap-4 mb-4">
+                                {/* Logo MOV dengan Mangga Headphone */}
+                                <motion.div
+                                    whileHover={{ scale: 1.05 }}
+                                    className="relative"
+                                >
+                                    <img 
+                                        src="/mov-logo.png" 
+                                        alt="MOV Logo" 
+                                        className="h-12 w-auto object-contain drop-shadow-lg"
+                                        onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            const fallback = e.target.nextElementSibling;
+                                            if (fallback) fallback.style.display = 'block';
+                                        }}
+                                    />
+                                    <div style={{ display: 'none' }}>
+                                        <ApplicationLogo showText={true} className="h-12" />
+                                    </div>
+                                </motion.div>
+                            </div>
+                            <h1 className="text-3xl md:text-4xl font-heading text-gray-900 mb-2">
+                                MOV Center - Chat Room
+                            </h1>
+                            <p className="text-gray-600 font-body">
+                                Kelola dan jawab chat dari Petani dan Guest
+                            </p>
+                        </motion.div>
+
+                        {/* Tabs */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="mb-6"
+                        >
+                            <div className="flex gap-2 p-1 bg-white/80 backdrop-blur-lg rounded-xl shadow-lg border border-gray-200/50 max-w-md">
+                                <button
+                                    onClick={() => setActiveTab('guest-chat')}
+                                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all ${
+                                        activeTab === 'guest-chat'
+                                            ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md'
+                                            : 'text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    <MessageCircle className="w-4 h-4" />
+                                    Guest Chat
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('faq')}
+                                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all ${
+                                        activeTab === 'faq'
+                                            ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-md'
+                                            : 'text-gray-600 hover:bg-gray-100'
+                                    }`}
+                                >
+                                    <FileQuestion className="w-4 h-4" />
+                                    FAQ
+                                </button>
+                            </div>
+                        </motion.div>
+
+                        {/* Tab Content */}
+                        <AnimatePresence mode="wait">
+                            {activeTab === 'guest-chat' ? (
+                                <motion.div
+                                    key="guest-chat"
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: 20 }}
+                                    transition={{ duration: 0.2 }}
+                                >
+                                    <GuestChatRoom guestPrivateChats={guestPrivateChats} />
+                                </motion.div>
+                            ) : (
+                                <motion.div
+                                    key="faq"
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: 20 }}
+                                    transition={{ duration: 0.2 }}
+                                >
+                                    <FAQManagement faqs={faqs || []} categories={categories || []} />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </div>
+            </AuthenticatedLayout>
+        );
+    }
 
     return (
         <AuthenticatedLayout>
@@ -320,42 +697,31 @@ export default function CustomerService() {
                         className="text-center mb-8"
                     >
                         <motion.div
-                            initial={{ scale: 0, rotate: -180 }}
-                            animate={{ scale: 1, rotate: 0 }}
-                            transition={{ 
-                                duration: 0.8, 
-                                ease: [0.34, 1.56, 0.64, 1],
-                                delay: 0.2 
-                            }}
-                            className="relative inline-block mb-6"
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.2 }}
+                            className="mb-6 flex justify-center"
                         >
-                            <div className="w-24 h-24 md:w-28 md:h-28 bg-gradient-to-br from-green-500 via-emerald-500 to-teal-600 rounded-3xl flex items-center justify-center mx-auto shadow-2xl relative overflow-hidden">
-                                <motion.div
-                                    animate={{ 
-                                        rotate: [0, 360],
-                                        scale: [1, 1.1, 1]
+                            {/* Logo MOV dengan Mangga Headphone */}
+                            <motion.div
+                                whileHover={{ scale: 1.05 }}
+                                className="relative"
+                            >
+                                <img 
+                                    src="/mov-logo.png" 
+                                    alt="MOV Logo" 
+                                    className="h-24 md:h-32 w-auto object-contain drop-shadow-2xl"
+                                    onError={(e) => {
+                                        // Fallback ke ApplicationLogo jika logo tidak ditemukan
+                                        e.target.style.display = 'none';
+                                        const fallback = e.target.nextElementSibling;
+                                        if (fallback) fallback.style.display = 'block';
                                     }}
-                                    transition={{ 
-                                        duration: 20, 
-                                        repeat: Infinity,
-                                        ease: "linear"
-                                    }}
-                                    className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent"
                                 />
-                                <HeadphonesIcon className="w-12 h-12 md:w-14 md:h-14 text-white relative z-10 drop-shadow-lg" />
-                                <motion.div
-                                    animate={{ 
-                                        scale: [1, 1.2, 1],
-                                        opacity: [0.5, 0, 0.5]
-                                    }}
-                                    transition={{ 
-                                        duration: 2, 
-                                        repeat: Infinity,
-                                        ease: "easeInOut"
-                                    }}
-                                    className="absolute inset-0 bg-gradient-to-br from-green-400 to-emerald-500 rounded-3xl blur-xl"
-                                />
-                            </div>
+                                <div style={{ display: 'none' }}>
+                                    <ApplicationLogo showText={true} className="h-16 md:h-20" />
+                                </div>
+                            </motion.div>
                         </motion.div>
                         
                         <motion.h1
@@ -379,10 +745,28 @@ export default function CustomerService() {
                             animate={{ opacity: 1, scale: 1 }}
                             transition={{ delay: 0.6 }}
                         >
-                            <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 text-white text-sm px-4 py-1.5 shadow-lg border-0">
-                                <Sparkles className="w-3 h-3 mr-1.5" />
-                                {isKPetani ? 'K-Petani Support' : 'Petani Support'}
-                            </Badge>
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 text-white text-sm px-4 py-1.5 shadow-lg border-0">
+                                    <Sparkles className="w-3 h-3 mr-1.5" />
+                                    {isKPetani ? 'K-Petani Support' : 'Petani Support'}
+                                </Badge>
+                                <Link
+                                    href={route('chat.index')}
+                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-heading flex items-center gap-2 shadow-lg"
+                                >
+                                    <MessageCircle className="w-4 h-4" />
+                                    Chat Grup & Pribadi
+                                </Link>
+                                {isKPetani && (
+                                    <Link
+                                        href={route('questions.index')}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-heading flex items-center gap-2 shadow-lg"
+                                    >
+                                        <MessageCircle className="w-4 h-4" />
+                                        Kelola Pertanyaan
+                                    </Link>
+                                )}
+                            </div>
                         </motion.div>
                     </motion.div>
 
@@ -498,50 +882,142 @@ export default function CustomerService() {
                         <Card className="p-6 md:p-8 bg-gradient-to-r from-green-50 via-emerald-50 to-teal-50 border-2 border-green-200/60 shadow-xl relative overflow-hidden">
                             <div className="absolute top-0 right-0 w-64 h-64 bg-green-400/10 rounded-full blur-3xl -mr-32 -mt-32"></div>
                             <div className="relative z-10">
-                                <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
-                                        <Phone className="w-5 h-5 text-white" />
-                                    </div>
-                                    Informasi Kontak
-                                </h3>
-                                <div className="space-y-4">
-                                    <motion.div
-                                        whileHover={{ x: 5 }}
-                                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                <MessageCircle className="w-5 h-5 text-green-600" />
-                                            </div>
-                                            <span className="text-gray-700 font-medium">WhatsApp CS</span>
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-xl font-bold text-gray-900 flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg">
+                                            <Phone className="w-5 h-5 text-white" />
                                         </div>
-                                        <span className="text-gray-900 font-bold text-sm sm:text-base sm:ml-auto">{contactInfo.whatsapp}</span>
-                                    </motion.div>
-                                    <motion.div
-                                        whileHover={{ x: 5 }}
-                                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                <Mail className="w-5 h-5 text-purple-600" />
-                                            </div>
-                                            <span className="text-gray-700 font-medium">Email</span>
-                                        </div>
-                                        <span className="text-gray-900 font-semibold text-xs sm:text-sm break-all sm:ml-auto">{contactInfo.email}</span>
-                                    </motion.div>
-                                    <motion.div
-                                        whileHover={{ x: 5 }}
-                                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                <Clock className="w-5 h-5 text-blue-600" />
-                                            </div>
-                                            <span className="text-gray-700 font-medium">Jam Operasional</span>
-                                        </div>
-                                        <span className="text-gray-900 font-semibold text-xs sm:text-sm sm:ml-auto">{contactInfo.operationalHours}</span>
-                                    </motion.div>
+                                        Informasi Kontak
+                                    </h3>
+                                    {isKPetani && (
+                                        <motion.button
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            onClick={() => setIsEditingContact(!isEditingContact)}
+                                            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl shadow-lg transition-colors"
+                                        >
+                                            {isEditingContact ? (
+                                                <>
+                                                    <X className="w-4 h-4" />
+                                                    Batal
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Edit className="w-4 h-4" />
+                                                    Edit
+                                                </>
+                                            )}
+                                        </motion.button>
+                                    )}
                                 </div>
+                                
+                                {isEditingContact && isKPetani ? (
+                                    <form onSubmit={handleSaveContact} className="space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                WhatsApp CS
+                                            </label>
+                                            <Input
+                                                type="text"
+                                                value={contactFormData.whatsapp}
+                                                onChange={(e) => setContactFormData({ ...contactFormData, whatsapp: e.target.value })}
+                                                placeholder="+62 811-2019-210"
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Telepon
+                                            </label>
+                                            <Input
+                                                type="text"
+                                                value={contactFormData.phone}
+                                                onChange={(e) => setContactFormData({ ...contactFormData, phone: e.target.value })}
+                                                placeholder="+62 811-2019-210"
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Email
+                                            </label>
+                                            <Input
+                                                type="email"
+                                                value={contactFormData.email}
+                                                onChange={(e) => setContactFormData({ ...contactFormData, email: e.target.value })}
+                                                placeholder="movproject03@gmail.com"
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Jam Operasional
+                                            </label>
+                                            <Input
+                                                type="text"
+                                                value={contactFormData.operational_hours}
+                                                onChange={(e) => setContactFormData({ ...contactFormData, operational_hours: e.target.value })}
+                                                placeholder="Senin - Jumat: 08:00 - 17:00 WIB"
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div className="flex items-center justify-end gap-3 pt-4">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => setIsEditingContact(false)}
+                                            >
+                                                Batal
+                                            </Button>
+                                            <Button
+                                                type="submit"
+                                                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                                            >
+                                                <Save className="w-4 h-4 mr-2" />
+                                                Simpan
+                                            </Button>
+                                        </div>
+                                    </form>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <motion.div
+                                            whileHover={{ x: 5 }}
+                                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <MessageCircle className="w-5 h-5 text-green-600" />
+                                                </div>
+                                                <span className="text-gray-700 font-medium">WhatsApp CS</span>
+                                            </div>
+                                            <span className="text-gray-900 font-bold text-sm sm:text-base sm:ml-auto">{contactInfo.whatsapp}</span>
+                                        </motion.div>
+                                        <motion.div
+                                            whileHover={{ x: 5 }}
+                                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <Mail className="w-5 h-5 text-purple-600" />
+                                                </div>
+                                                <span className="text-gray-700 font-medium">Email</span>
+                                            </div>
+                                            <span className="text-gray-900 font-semibold text-xs sm:text-sm break-all sm:ml-auto">{contactInfo.email}</span>
+                                        </motion.div>
+                                        <motion.div
+                                            whileHover={{ x: 5 }}
+                                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 p-4 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200/50 hover:border-green-300 transition-all"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                    <Clock className="w-5 h-5 text-blue-600" />
+                                                </div>
+                                                <span className="text-gray-700 font-medium">Jam Operasional</span>
+                                            </div>
+                                            <span className="text-gray-900 font-semibold text-xs sm:text-sm sm:ml-auto">{contactInfo.operationalHours}</span>
+                                        </motion.div>
+                                    </div>
+                                )}
                             </div>
                         </Card>
                     </motion.div>
@@ -630,54 +1106,144 @@ export default function CustomerService() {
                                     </div>
                                 </div>
 
-                                {/* Chat Messages - Enhanced */}
-                                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-5 mb-5 h-80 overflow-y-auto space-y-4 custom-scrollbar border border-gray-200/50">
+                                {/* Chat Messages - Modern Chat Style */}
+                                <div className="bg-[#e5ddd5] bg-[url('data:image/svg+xml,%3Csvg width=%2260%22 height=%2260%22 viewBox=%220 0 60 60%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cg fill=%22none%22 fill-rule=%22evenodd%22%3E%3Cg fill=%22%23d4d4d4%22 fill-opacity=%220.4%22%3E%3Cpath d=%22M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] rounded-2xl p-4 mb-5 h-80 overflow-y-auto space-y-1 custom-scrollbar">
                                     <AnimatePresence>
-                                        {chatMessages.map((msg) => (
-                                            <motion.div
-                                                key={msg.id}
-                                                initial={{ opacity: 0, y: 10, scale: 0.9 }}
-                                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                exit={{ opacity: 0, scale: 0.9 }}
-                                                transition={{ duration: 0.3 }}
-                                                className={`flex ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}
-                                            >
-                                                <motion.div
-                                                    whileHover={{ scale: 1.02 }}
-                                                    className={`max-w-[85%] md:max-w-[75%] p-4 rounded-2xl shadow-lg ${
-                                                        msg.from === 'user'
-                                                            ? 'bg-gradient-to-br from-green-600 to-emerald-600 text-white rounded-br-sm'
-                                                            : msg.from === 'cs'
-                                                            ? 'bg-gradient-to-br from-blue-50 to-cyan-50 border-2 border-blue-200 text-gray-800 rounded-bl-sm'
-                                                            : 'bg-white border-2 border-gray-200 text-gray-800 rounded-bl-sm'
-                                                    }`}
-                                                >
-                                                    {(msg.from === 'bot' || msg.from === 'cs') && (
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            {msg.from === 'bot' && msg.isAutoAnswer && (
-                                                                <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-xs">
-                                                                    <Sparkles className="w-3 h-3 mr-1" />
-                                                                    Auto-Answer
-                                                                </Badge>
-                                                            )}
-                                                            {msg.from === 'cs' && (
-                                                                <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-xs">
-                                                                    <User className="w-3 h-3 mr-1" />
-                                                                    Customer Service
-                                                                </Badge>
-                                                            )}
+                                        {(() => {
+                                            // Group messages by date and sender
+                                            let currentDate = null;
+                                            const groupedMessages = [];
+                                            
+                                            chatMessages.forEach((msg, index) => {
+                                                const msgDate = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+                                                
+                                                // Add date separator if date changed
+                                                if (currentDate !== msgDate) {
+                                                    currentDate = msgDate;
+                                                    groupedMessages.push({
+                                                        type: 'date-separator',
+                                                        date: msgDate,
+                                                        id: `date-${msgDate}-${index}`,
+                                                    });
+                                                }
+                                                
+                                                // Check if should show avatar (first message of group or different sender)
+                                                const prevMsg = index > 0 ? chatMessages[index - 1] : null;
+                                                // Simple grouping: show avatar if different sender or first message
+                                                const showAvatar = !prevMsg || prevMsg.from !== msg.from;
+                                                
+                                                groupedMessages.push({
+                                                    ...msg,
+                                                    showAvatar,
+                                                    isConsecutive: prevMsg && prevMsg.from === msg.from,
+                                                });
+                                            });
+                                            
+                                            return groupedMessages.map((item, idx) => {
+                                                if (item.type === 'date-separator') {
+                                                    return (
+                                                        <div key={item.id} className="flex justify-center my-4">
+                                                            <div className="bg-white/80 px-3 py-1 rounded-full text-xs text-gray-600 font-medium">
+                                                                {item.date}
+                                                            </div>
                                                         </div>
-                                                    )}
-                                                    <p className="text-sm md:text-base leading-relaxed whitespace-pre-line">{msg.text}</p>
-                                                    <div className={`flex items-center gap-1 mt-2 text-xs ${
-                                                        msg.from === 'user' ? 'text-green-100' : 'text-gray-500'
-                                                    }`}>
-                                                        <Clock className="w-3 h-3" />
-                                                        {msg.time}
-                                                    </div>
-                                                </motion.div>
-                                            </motion.div>
-                                        ))}
+                                                    );
+                                                }
+                                                
+                                                const isUser = item.from === 'user';
+                                                const isCS = item.from === 'cs';
+                                                const isBot = item.from === 'bot';
+                                                
+                                                return (
+                                                    <motion.div
+                                                        key={item.id}
+                                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                        exit={{ opacity: 0, scale: 0.95 }}
+                                                        transition={{ duration: 0.2, delay: idx * 0.02 }}
+                                                        className={`flex ${isUser ? 'justify-end' : 'justify-start'} items-end gap-2 ${item.isConsecutive ? 'mt-0.5' : 'mt-2'}`}
+                                                    >
+                                                        {/* Avatar - only show for first message in group */}
+                                                        {item.showAvatar && !isUser && (
+                                                            <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 mb-1">
+                                                                {isCS ? (
+                                                                    <User className="w-4 h-4 text-white" />
+                                                                ) : (
+                                                                    <MessageCircle className="w-4 h-4 text-white" />
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {!item.showAvatar && !isUser && <div className="w-8 h-8 flex-shrink-0" />}
+                                                        
+                                                        <motion.div
+                                                            whileHover={{ scale: 1.01 }}
+                                                            className={`max-w-[75%] md:max-w-[65%] ${
+                                                                isUser
+                                                                    ? 'bg-gradient-to-br from-green-600 to-emerald-600 text-white rounded-2xl rounded-br-sm shadow-sm'
+                                                                    : isCS
+                                                                    ? 'bg-white text-gray-900 rounded-2xl rounded-bl-sm shadow-sm'
+                                                                    : 'bg-white text-gray-900 rounded-2xl rounded-bl-sm shadow-sm'
+                                                            } px-3 py-2`}
+                                                        >
+                                                            {/* Badge for bot/cs */}
+                                                            {(isBot || isCS) && (
+                                                                <div className="flex items-center gap-1.5 mb-1">
+                                                                    {isBot && item.isAutoAnswer && (
+                                                                        <span className="text-[10px] text-purple-600 font-semibold">🤖 Auto-Answer</span>
+                                                                    )}
+                                                                    {isCS && (
+                                                                        <span className="text-[10px] text-blue-600 font-semibold">👤 Customer Service</span>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            
+                                                            <p className={`text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                                                                isUser ? 'text-white' : 'text-gray-900'
+                                                            }`}>
+                                                                {item.text}
+                                                            </p>
+                                                            
+                                                            <div className={`flex items-center justify-end gap-1 mt-1 ${
+                                                                isUser ? 'text-white/80' : 'text-gray-500'
+                                                            }`}>
+                                                                <span className="text-[11px]">{item.time}</span>
+                                                                {isUser && (
+                                                                    // WhatsApp-style checkmarks: single = sent, double gray = delivered, double blue = read
+                                                                    <div className="flex items-center ml-1">
+                                                                        {item.readAt ? (
+                                                                            // Double check blue (read)
+                                                                            <svg className="w-4 h-4 text-blue-300" fill="currentColor" viewBox="0 0 16 15">
+                                                                                <path d="M15.854.854a.5.5 0 0 0-.708-.708L7.707 7.293 4.854 4.44a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l8-8Z"/>
+                                                                                <path d="M0 14.5V16h1.5l9-9L9 5.5 0 14.5Z"/>
+                                                                            </svg>
+                                                                        ) : item.answeredAt ? (
+                                                                            // Double check gray (delivered)
+                                                                            <svg className="w-4 h-4 text-white/60" fill="currentColor" viewBox="0 0 16 15">
+                                                                                <path d="M15.854.854a.5.5 0 0 0-.708-.708L7.707 7.293 4.854 4.44a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l8-8Z"/>
+                                                                                <path d="M0 14.5V16h1.5l9-9L9 5.5 0 14.5Z"/>
+                                                                            </svg>
+                                                                        ) : (
+                                                                            // Single check (sent)
+                                                                            <svg className="w-3.5 h-3.5 text-white/60" fill="currentColor" viewBox="0 0 16 15">
+                                                                                <path d="M15.854.854a.5.5 0 0 0-.708-.708L7.707 7.293 4.854 4.44a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0l8-8Z"/>
+                                                                            </svg>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </motion.div>
+                                                        
+                                                        {/* Avatar for sent messages - only show for first message in group */}
+                                                        {isUser && item.showAvatar && (
+                                                            <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 mb-1">
+                                                                <User className="w-4 h-4 text-white" />
+                                                            </div>
+                                                        )}
+                                                        {isUser && !item.showAvatar && <div className="w-8 h-8 flex-shrink-0" />}
+                                                    </motion.div>
+                                                );
+                                            });
+                                        })()}
                                     </AnimatePresence>
                                     
                                     {isTyping && (
@@ -685,22 +1251,25 @@ export default function CustomerService() {
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             exit={{ opacity: 0 }}
-                                            className="flex justify-start"
+                                            className="flex justify-start items-end gap-2"
                                         >
-                                            <div className="bg-white border-2 border-gray-200 rounded-2xl rounded-bl-sm p-4 shadow-lg">
-                                                <div className="flex gap-1.5">
+                                            <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 mb-1">
+                                                <MessageCircle className="w-4 h-4 text-white" />
+                                            </div>
+                                            <div className="bg-white rounded-lg rounded-tl-none shadow-sm px-3 py-2">
+                                                <div className="flex gap-1">
                                                     <motion.div
-                                                        animate={{ y: [0, -8, 0] }}
+                                                        animate={{ y: [0, -4, 0] }}
                                                         transition={{ duration: 0.6, repeat: Infinity, delay: 0 }}
                                                         className="w-2 h-2 bg-gray-400 rounded-full"
                                                     />
                                                     <motion.div
-                                                        animate={{ y: [0, -8, 0] }}
+                                                        animate={{ y: [0, -4, 0] }}
                                                         transition={{ duration: 0.6, repeat: Infinity, delay: 0.2 }}
                                                         className="w-2 h-2 bg-gray-400 rounded-full"
                                                     />
                                                     <motion.div
-                                                        animate={{ y: [0, -8, 0] }}
+                                                        animate={{ y: [0, -4, 0] }}
                                                         transition={{ duration: 0.6, repeat: Infinity, delay: 0.4 }}
                                                         className="w-2 h-2 bg-gray-400 rounded-full"
                                                     />
@@ -711,9 +1280,9 @@ export default function CustomerService() {
                                     <div ref={chatEndRef} />
                                 </div>
 
-                                {/* Input - Enhanced */}
+                                {/* Input - WhatsApp Style */}
                                 <div 
-                                    className="flex gap-3"
+                                    className="flex gap-2 bg-white rounded-2xl p-2 border border-gray-200"
                                     onKeyDown={(e) => {
                                         // Prevent any form submission or page scroll
                                         if (e.key === 'Enter' && !e.shiftKey) {
@@ -724,7 +1293,7 @@ export default function CustomerService() {
                                 >
                                     <Input
                                         id="chat-input"
-                                        placeholder="Ketik pesan Anda..."
+                                        placeholder="Ketik pesan..."
                                         value={message}
                                         onChange={(e) => setMessage(e.target.value)}
                                         onKeyDown={(e) => {
@@ -741,7 +1310,7 @@ export default function CustomerService() {
                                                 }, 100);
                                             }
                                         }}
-                                        className="text-sm md:text-base flex-1 h-12 border-2 border-gray-300 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl"
+                                        className="text-sm md:text-base flex-1 h-10 border-0 focus:ring-0 focus:outline-none bg-transparent"
                                     />
                                     <motion.div
                                         whileHover={{ scale: 1.05 }}
@@ -750,7 +1319,7 @@ export default function CustomerService() {
                                         <Button
                                             type="button"
                                             onClick={(e) => handleSendMessage(e)}
-                                            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white h-12 px-6 shadow-lg rounded-xl"
+                                            className="bg-green-500 hover:bg-green-600 text-white h-10 w-10 p-0 rounded-full shadow-md"
                                             disabled={!message.trim()}
                                         >
                                             <Send className="w-5 h-5" />

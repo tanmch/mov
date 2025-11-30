@@ -101,7 +101,18 @@ class FirebaseSyncService
     }
 
     /**
+     * Get Firebase kebun ID (always 1 for single kebun structure)
+     * This ensures all bloks use kebun_1 in Firebase regardless of MySQL kebun_id
+     */
+    protected function getFirebaseKebunId(): int
+    {
+        return 1; // Always use kebun_1 in Firebase
+    }
+
+    /**
      * Sync sensor readings from Firebase to MySQL
+     * Syncs current sensor data from /sensors as historical data
+     * Also syncs from /sensor_history if available (optional)
      */
     public function syncSensorReadingsFromFirebase(string $blokCode): array
     {
@@ -112,63 +123,131 @@ class FirebaseSyncService
                 throw new \Exception("Blok not found: {$blokCode}");
             }
 
-            // Get sensor data from Firebase
+            $synced = 0;
+            // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+            $kebunId = $this->getFirebaseKebunId();
+
+            // 1. Sync current sensor data from /sensors (save as historical)
+            // This is the main source since /sensor_history may not exist
             $sensorData = $this->firebase->getDatabaseData(
-                "kebuns/kebun_{$blok->kebun_id}/bloks/{$blokCode}/sensors"
+                "kebuns/kebun_{$kebunId}/bloks/{$blokCode}/sensors"
             );
 
-            if (!$sensorData) {
-                return ['synced' => 0, 'message' => 'No sensor data in Firebase'];
-            }
+            if ($sensorData && is_array($sensorData)) {
+                foreach ($sensorData as $sensorType => $data) {
+                    if (!is_array($data) || !isset($data['value'])) continue;
 
-            $synced = 0;
-            foreach ($sensorData as $sensorType => $data) {
-                if (!is_array($data)) continue;
+                    $status = SensorReading::determineStatus(
+                        $sensorType,
+                        $data['value'] ?? 0
+                    );
 
-                $status = SensorReading::determineStatus(
-                    $sensorType,
-                    $data['value'] ?? 0
-                );
+                    // Get timestamp from Firebase or use current time
+                    $timestamp = isset($data['timestamp']) 
+                        ? \Carbon\Carbon::createFromTimestampMs($data['timestamp'])
+                        : now();
 
-                // Check if this reading already exists (avoid duplicates)
-                $timestamp = isset($data['timestamp']) 
-                    ? \Carbon\Carbon::createFromTimestampMs($data['timestamp'])
-                    : now();
+                    // Check if this exact reading already exists (same timestamp and value)
+                    $existing = SensorReading::where('blok_id', $blok->id)
+                        ->where('sensor_type', $sensorType)
+                        ->where('reading_time', $timestamp)
+                        ->where('value', $data['value'])
+                        ->first();
 
-                $existing = SensorReading::where('blok_id', $blok->id)
-                    ->where('sensor_type', $sensorType)
-                    ->where('reading_time', $timestamp)
-                    ->first();
+                    if (!$existing) {
+                        // Also check if we have a recent reading (within last minute) with same value
+                        // to avoid storing duplicate readings if sync runs too frequently
+                        $recentReading = SensorReading::where('blok_id', $blok->id)
+                            ->where('sensor_type', $sensorType)
+                            ->where('reading_time', '>=', $timestamp->copy()->subMinute())
+                            ->where('value', $data['value'])
+                            ->first();
 
-                if (!$existing) {
-                    SensorReading::create([
-                        'blok_id' => $blok->id,
-                        'sensor_type' => $sensorType,
-                        'value' => $data['value'] ?? 0,
-                        'unit' => $data['unit'] ?? '',
-                        'status' => $status,
-                        'firebase_path' => "kebuns/kebun_{$blok->kebun_id}/bloks/{$blokCode}/sensors/{$sensorType}",
-                        'reading_time' => $timestamp,
-                        'metadata' => $data,
-                    ]);
-                    $synced++;
+                        if (!$recentReading) {
+                            SensorReading::create([
+                                'blok_id' => $blok->id,
+                                'sensor_type' => $sensorType,
+                                'value' => $data['value'] ?? 0,
+                                'unit' => $data['unit'] ?? ($sensorType === 'suhu_udara' ? '°C' : '%'),
+                                'status' => $status,
+                                'firebase_path' => "kebuns/kebun_{$kebunId}/bloks/{$blokCode}/sensors/{$sensorType}",
+                                'reading_time' => $timestamp,
+                                'metadata' => $data,
+                            ]);
+                            $synced++;
 
-                    // Create notification if critical
-                    if ($status === 'critical') {
-                        $this->createSensorAlert($blok, $sensorType, $data['value']);
+                            // Create notification if critical or warning
+                            if ($status === 'critical' || $status === 'warning') {
+                                $this->createSensorAlert($blok, $sensorType, $data['value']);
+                            }
+                        }
                     }
                 }
             }
 
+            // 2. Sync sensor_history (historical data) - Optional, if exists
+            // This is a fallback if ESP32 also writes to sensor_history
+            // Always use kebun_id = 1 for Firebase structure
+            $sensorHistory = $this->firebase->getDatabaseData(
+                "kebuns/kebun_{$kebunId}/bloks/{$blokCode}/sensor_history"
+            );
+
+            if ($sensorHistory && is_array($sensorHistory)) {
+                foreach ($sensorHistory as $timestampMs => $historyData) {
+                    if (!is_array($historyData)) continue;
+
+                    $readingTime = \Carbon\Carbon::createFromTimestampMs($timestampMs);
+
+                    // Sync each sensor type from history
+                    foreach (['suhu_udara', 'kelembapan_udara', 'kelembapan_tanah'] as $sensorType) {
+                        if (!isset($historyData[$sensorType])) continue;
+
+                        $value = (float) $historyData[$sensorType];
+                        $status = SensorReading::determineStatus($sensorType, $value);
+
+                        // Check if already exists
+                        $existing = SensorReading::where('blok_id', $blok->id)
+                            ->where('sensor_type', $sensorType)
+                            ->where('reading_time', $readingTime)
+                            ->where('value', $value)
+                            ->first();
+
+                        if (!$existing) {
+                            SensorReading::create([
+                                'blok_id' => $blok->id,
+                                'sensor_type' => $sensorType,
+                                'value' => $value,
+                                'unit' => $sensorType === 'suhu_udara' ? '°C' : '%',
+                                'status' => $status,
+                                'firebase_path' => "kebuns/kebun_{$kebunId}/bloks/{$blokCode}/sensor_history/{$timestampMs}",
+                                'reading_time' => $readingTime,
+                                'metadata' => $historyData,
+                            ]);
+                            $synced++;
+
+                            // Create notification if critical or warning
+                            if ($status === 'critical' || $status === 'warning') {
+                                $this->createSensorAlert($blok, $sensorType, $value);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if ($synced === 0) {
+                return ['synced' => 0, 'message' => 'No new sensor data to sync (data may already be synced)'];
+            }
+
             return [
                 'synced' => $synced,
-                'message' => "Synced {$synced} sensor readings"
+                'message' => "Synced {$synced} sensor readings from Firebase to MySQL"
             ];
 
         } catch (\Exception $e) {
             Log::error("Failed to sync sensor readings from Firebase", [
                 'blok_code' => $blokCode,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             return ['synced' => 0, 'error' => $e->getMessage()];
         }
@@ -412,7 +491,8 @@ class FirebaseSyncService
     {
         try {
             $blokCode = $blok->code ?? "blok_{$blok->id}";
-            $kebunId = $blok->kebun_id;
+            // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+            $kebunId = $this->getFirebaseKebunId();
 
             // Initialize blok info
             $this->firebase->setDatabaseData(

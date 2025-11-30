@@ -121,6 +121,22 @@ export default function KebunMonitoring({ kebuns = [], summary = {} }) {
         );
     }, [kebuns, realtimeSensorData]);
 
+    // Calculate summary from allBloks (using Firebase data)
+    const calculatedSummary = useMemo(() => {
+        const sehat = allBloks.filter(blok => blok.status === 'sehat').length;
+        const siapPanen = allBloks.filter(blok => blok.status === 'siap-panen').length;
+        const perhatian = allBloks.filter(blok => blok.status === 'perhatian').length;
+        const total = allBloks.length;
+        
+        return {
+            blok_sehat: sehat,
+            blok_siap_panen: siapPanen,
+            blok_perhatian: perhatian,
+            total_blok: total,
+            total_pohon: allBloks.reduce((sum, blok) => sum + (blok.jumlah_pohon || 0), 0),
+        };
+    }, [allBloks]);
+
     const getStatusColor = (status) => {
         switch (status) {
             case 'sehat':
@@ -327,9 +343,10 @@ export default function KebunMonitoring({ kebuns = [], summary = {} }) {
         kebuns.forEach(kebun => {
             kebun.bloks.forEach(blok => {
                 const blokCode = blok.code;
-                const kebunId = kebun.id;
+                // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+                const kebunId = 1;
                 
-                if (!blokCode || !kebunId) return;
+                if (!blokCode) return;
 
                 const sensorRef = ref(database, `kebuns/kebun_${kebunId}/bloks/${blokCode}/sensors`);
                 
@@ -521,7 +538,7 @@ export default function KebunMonitoring({ kebuns = [], summary = {} }) {
                                     <div className="flex items-center gap-2">
                                         <MapPin className="w-5 h-5 text-green-600" />
                                         <span className="text-sm font-medium text-gray-700">
-                                            Total: {summary.total_pohon || 0} Pohon
+                                            Total: {calculatedSummary.total_pohon || 0} Pohon
                                         </span>
                                     </div>
                                 </div>
@@ -1035,14 +1052,22 @@ export default function KebunMonitoring({ kebuns = [], summary = {} }) {
                         transition={{ delay: 0.3 }}
                     >
                         <Card className="p-4 md:p-6 bg-gradient-to-r from-emerald-50 via-teal-50 to-green-50 border-2 border-emerald-200/50 shadow-xl">
-                            <h3 className="text-lg font-bold text-gray-900 mb-4">Ringkasan Kebun</h3>
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-bold text-gray-900">Ringkasan Kebun</h3>
+                                {isFirebaseConnected && (
+                                    <div className="flex items-center gap-2 text-xs text-green-600 font-medium bg-green-50 px-2 py-1 rounded-full border border-green-200">
+                                        <Wifi className="w-3 h-3" />
+                                        <span>Data Real-time</span>
+                                    </div>
+                                )}
+                            </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                                 <motion.div
                                     whileHover={{ scale: 1.05, y: -2 }}
                                     className="bg-white/60 backdrop-blur-sm p-4 rounded-xl border border-white/50 shadow-md"
                                 >
                                     <p className="text-3xl font-bold text-green-600 mb-1">
-                                        {summary.blok_sehat || 0}
+                                        {calculatedSummary.blok_sehat || 0}
                                     </p>
                                     <p className="text-sm text-gray-700 font-medium">Blok Sehat</p>
                                 </motion.div>
@@ -1051,7 +1076,7 @@ export default function KebunMonitoring({ kebuns = [], summary = {} }) {
                                     className="bg-white/60 backdrop-blur-sm p-4 rounded-xl border border-white/50 shadow-md"
                                 >
                                     <p className="text-3xl font-bold text-orange-600 mb-1">
-                                        {summary.blok_siap_panen || 0}
+                                        {calculatedSummary.blok_siap_panen || 0}
                                     </p>
                                     <p className="text-sm text-gray-700 font-medium">Siap Panen</p>
                                 </motion.div>
@@ -1060,7 +1085,7 @@ export default function KebunMonitoring({ kebuns = [], summary = {} }) {
                                     className="bg-white/60 backdrop-blur-sm p-4 rounded-xl border border-white/50 shadow-md"
                                 >
                                     <p className="text-3xl font-bold text-yellow-600 mb-1">
-                                        {summary.blok_perhatian || 0}
+                                        {calculatedSummary.blok_perhatian || 0}
                                     </p>
                                     <p className="text-sm text-gray-700 font-medium">Perlu Perhatian</p>
                                 </motion.div>
@@ -1069,7 +1094,7 @@ export default function KebunMonitoring({ kebuns = [], summary = {} }) {
                                     className="bg-white/60 backdrop-blur-sm p-4 rounded-xl border border-white/50 shadow-md"
                                 >
                                     <p className="text-3xl font-bold text-gray-700 mb-1">
-                                        {summary.total_pohon || 0}
+                                        {calculatedSummary.total_pohon || 0}
                                     </p>
                                     <p className="text-sm text-gray-700 font-medium">Total Pohon</p>
                                 </motion.div>

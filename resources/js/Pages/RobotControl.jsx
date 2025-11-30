@@ -1743,7 +1743,7 @@ export default function RobotControl({
                                                         id="manual-blok-from"
                                                         value={manualBlokFrom}
                                                         onChange={(e) => setManualBlokFrom(e.target.value)}
-                                                        className="w-full p-3 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all" 
+                                                        className="w-full p-2.5 sm:p-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 sm:focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 transition-all bg-gradient-to-br from-white to-purple-50/30 text-gray-900 font-medium shadow-sm hover:shadow-md cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23334155%22%20d%3D%22M6%209L1%204h10z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px] sm:bg-[length:12px] bg-[right_8px_center] sm:bg-[right_12px_center] bg-no-repeat pr-8 sm:pr-10" 
                                                         required
                                                     >
                                                         <option value="">Pilih Blok</option>
@@ -1760,7 +1760,7 @@ export default function RobotControl({
                                                         id="manual-blok-to"
                                                         value={manualBlokTo}
                                                         onChange={(e) => setManualBlokTo(e.target.value)}
-                                                        className="w-full p-3 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all" 
+                                                        className="w-full p-2.5 sm:p-3 text-xs sm:text-sm border-2 border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 sm:focus:ring-4 focus:ring-purple-500/20 focus:border-purple-500 transition-all bg-gradient-to-br from-white to-purple-50/30 text-gray-900 font-medium shadow-sm hover:shadow-md cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23334155%22%20d%3D%22M6%209L1%204h10z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px] sm:bg-[length:12px] bg-[right_8px_center] sm:bg-[right_12px_center] bg-no-repeat pr-8 sm:pr-10" 
                                                     >
                                                         <option value="">Pilih Blok (Opsional)</option>
                                                         {bloksToUse.map((blok) => (
@@ -1906,7 +1906,7 @@ export default function RobotControl({
                                                             id="blok-from"
                                                             value={selectedBlokFrom}
                                                             onChange={(e) => setSelectedBlokFrom(e.target.value)}
-                                                            className="w-full p-4 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md" 
+                                                            className="w-full p-3 sm:p-4 text-xs sm:text-sm border-2 border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 sm:focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all bg-gradient-to-br from-white to-green-50/30 text-gray-900 font-medium shadow-sm hover:shadow-md cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23334155%22%20d%3D%22M6%209L1%204h10z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px] sm:bg-[length:12px] bg-[right_8px_center] sm:bg-[right_12px_center] bg-no-repeat pr-8 sm:pr-10" 
                                                             required
                                                         >
                                                             <option value="">Pilih Blok</option>
@@ -1923,7 +1923,7 @@ export default function RobotControl({
                                                             id="blok-to"
                                                             value={selectedBlokTo}
                                                             onChange={(e) => setSelectedBlokTo(e.target.value)}
-                                                            className="w-full p-4 text-sm border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all bg-white/80 backdrop-blur-sm shadow-sm hover:shadow-md" 
+                                                            className="w-full p-3 sm:p-4 text-xs sm:text-sm border-2 border-gray-300 rounded-lg sm:rounded-xl focus:ring-2 sm:focus:ring-4 focus:ring-green-500/20 focus:border-green-500 transition-all bg-gradient-to-br from-white to-green-50/30 text-gray-900 font-medium shadow-sm hover:shadow-md cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23334155%22%20d%3D%22M6%209L1%204h10z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px] sm:bg-[length:12px] bg-[right_8px_center] sm:bg-[right_12px_center] bg-no-repeat pr-8 sm:pr-10" 
                                                         >
                                                             <option value="">Pilih Blok (Opsional)</option>
                                                             {bloksToUse.map((blok) => (

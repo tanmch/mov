@@ -27,30 +27,32 @@ class SensorController extends Controller
 
             // Get all bloks user can access
             // K-Petani and Petani see the same kebuns (owned by K-Petani)
-            if ($user->role === 'k-petani') {
-                $bloks = Blok::whereHas('kebun', function ($q) use ($user) {
-                    $q->where('owner_id', $user->id);
-                })
-                ->with(['kebun'])
+            // Get bloks for dropdown - semua user (K-petani dan petani) bisa melihat semua blok
+            // Tidak ada filter berdasarkan user, semua blok tersedia untuk semua user
+            // Hapus duplikat berdasarkan code (jika ada blok dengan code yang sama, ambil yang pertama)
+            $bloks = Blok::with(['kebun'])
                 ->orderBy('code', 'asc')
-                ->get();
-            } else {
-                // Petani sees kebuns owned by K-Petani users
-                $bloks = Blok::whereHas('kebun.owner', function ($q) {
-                    $q->where('role', 'k-petani');
+                ->orderBy('name', 'asc')
+                ->get()
+                ->unique(function($blok) {
+                    // Gunakan code sebagai key untuk unique, jika code null gunakan id
+                    return $blok->code ?? $blok->id;
                 })
-                ->with(['kebun'])
-                ->orderBy('code', 'asc')
-                ->get();
-            }
+                ->values(); // Re-index array setelah unique
         
-        // Get blok options for filter
+        // Get blok options for filter - hapus duplikat lagi
         $blokOptions = [['value' => 'all', 'label' => 'Semua Blok']];
+        $seenCodes = [];
         foreach ($bloks as $blok) {
-            $blokOptions[] = [
-                'value' => $blok->id,
-                'label' => $blok->code . ' - ' . $blok->name
-            ];
+            $code = $blok->code ?? $blok->id;
+            // Skip jika code sudah pernah ditambahkan
+            if (!in_array($code, $seenCodes)) {
+                $seenCodes[] = $code;
+                $blokOptions[] = [
+                    'value' => $blok->id,
+                    'label' => $blok->code . ' - ' . $blok->name
+                ];
+            }
         }
 
         // Calculate time range based on period

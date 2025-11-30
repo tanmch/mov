@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,7 +7,7 @@ import { Button } from '@/Components/ui/button';
 import { Badge } from '@/Components/ui/badge';
 import { useRole } from '@/hooks/useRole';
 import { KPetaniOnly } from '@/Components/RoleGuard';
-import { User, MapPin, Calendar, Settings, Bell, Shield, HelpCircle, LogOut, ChevronRight, Edit, Package, TrendingUp, Users, Plus, UserPlus, Search, Filter, MoreVertical, Trash2, Power, Mail, Phone, X, CheckCircle2, XCircle, Key, Activity, Zap } from 'lucide-react';
+import { User, MapPin, Calendar, Settings, Bell, Shield, HelpCircle, LogOut, ChevronRight, Edit, Package, TrendingUp, Users, Plus, UserPlus, Search, Filter, MoreVertical, Trash2, Power, Mail, Phone, X, CheckCircle2, XCircle, Key, Activity, Zap, Camera, Upload } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
 import DeleteUserModal from '@/Components/Users/DeleteUserModal';
 import BackButton from '@/Components/BackButton';
@@ -46,10 +46,67 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
     const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [userToDelete, setUserToDelete] = useState(null);
+    const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+    const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
+    const [isDeletingAccount, setIsDeletingAccount] = useState(false);
     const [enableSensorSimulation, setEnableSensorSimulation] = useState(
         currentUser?.enable_sensor_simulation || user?.enable_sensor_simulation || false
     );
     const [isTogglingSimulation, setIsTogglingSimulation] = useState(false);
+    const [notificationSettings, setNotificationSettings] = useState({
+        'notif-deteksi': true,
+        'notif-penyiraman': true,
+        'notif-prediksi': true,
+        'notif-artikel': true,
+    });
+    const [profilePhoto, setProfilePhoto] = useState(null);
+    const [profilePhotoPreview, setProfilePhotoPreview] = useState(() => {
+        // Initialize with user photo_url if available
+        const photoUrl = user?.photo_url;
+        if (photoUrl) {
+            // Ensure URL is absolute
+            if (!photoUrl.startsWith('http')) {
+                if (photoUrl.startsWith('/storage/')) {
+                    return window.location.origin + photoUrl;
+                } else if (!photoUrl.startsWith('/')) {
+                    return window.location.origin + '/storage/' + photoUrl;
+                }
+            }
+            return photoUrl;
+        }
+        return null;
+    });
+    const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+    const [imageLoadError, setImageLoadError] = useState(false);
+    
+    // Update preview when user data changes
+    useEffect(() => {
+        if (user?.photo_url) {
+            // Ensure URL is absolute
+            let photoUrl = user.photo_url;
+            if (photoUrl && !photoUrl.startsWith('http')) {
+                // If relative URL, make it absolute
+                if (photoUrl.startsWith('/storage/')) {
+                    photoUrl = window.location.origin + photoUrl;
+                } else if (!photoUrl.startsWith('/')) {
+                    photoUrl = window.location.origin + '/storage/' + photoUrl;
+                }
+            }
+            // Extract base URL without query params for comparison
+            const baseUrl = photoUrl.split('?')[0];
+            const currentBaseUrl = profilePhotoPreview?.split('?')[0];
+            
+            // Only update if URL actually changed
+            if (baseUrl !== currentBaseUrl) {
+                // Add cache busting timestamp
+                photoUrl = photoUrl + (photoUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+                setProfilePhotoPreview(photoUrl);
+            }
+        } else if (!user?.photo_url && profilePhotoPreview) {
+            // Clear preview if user has no photo
+            setProfilePhotoPreview(null);
+        }
+    }, [user?.photo_url, user?.id]); // Add user.id to ensure update when user changes
 
     const userData = {
         name: user?.name || 'User',
@@ -276,6 +333,65 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
         });
     };
 
+    const handleUploadPhoto = (file) => {
+        setIsUploadingPhoto(true);
+        
+        const formData = new FormData();
+        formData.append('photo', file);
+        
+        router.post('/profile/upload-photo', formData, {
+            preserveScroll: true,
+            forceFormData: true,
+            onSuccess: (page) => {
+                setIsUploadingPhoto(false);
+                setProfilePhoto(null);
+                
+                // Force update preview immediately from page props
+                // The redirect response includes fresh user data via HandleInertiaRequests middleware
+                const updatedUser = page.props?.auth?.user;
+                if (updatedUser?.photo_url) {
+                    let photoUrl = updatedUser.photo_url;
+                    if (photoUrl && !photoUrl.startsWith('http')) {
+                        if (photoUrl.startsWith('/storage/')) {
+                            photoUrl = window.location.origin + photoUrl;
+                        } else if (!photoUrl.startsWith('/')) {
+                            photoUrl = window.location.origin + '/storage/' + photoUrl;
+                        }
+                    }
+                    // Add unique cache busting timestamp to force browser to reload image
+                    const timestamp = Date.now();
+                    const random = Math.random().toString(36).substring(7);
+                    photoUrl = photoUrl + (photoUrl.includes('?') ? '&' : '?') + 't=' + timestamp + '&v=' + random;
+                    
+                    // Reset error state and update preview
+                    setImageLoadError(false);
+                    setProfilePhotoPreview(photoUrl);
+                } else {
+                    // If no photo_url, ensure preview is cleared
+                    setProfilePhotoPreview(null);
+                }
+            },
+            onError: (errors) => {
+                alert(errors.photo || 'Gagal mengupload foto. Silakan coba lagi.');
+                setIsUploadingPhoto(false);
+                // Reset preview to original
+                if (user?.photo_url) {
+                    let photoUrl = user.photo_url;
+                    if (!photoUrl.startsWith('http')) {
+                        if (photoUrl.startsWith('/storage/')) {
+                            photoUrl = window.location.origin + photoUrl;
+                        } else if (!photoUrl.startsWith('/')) {
+                            photoUrl = window.location.origin + '/storage/' + photoUrl;
+                        }
+                    }
+                    setProfilePhotoPreview(photoUrl);
+                } else {
+                    setProfilePhotoPreview(null);
+                }
+            },
+        });
+    };
+
     return (
         <AuthenticatedLayout>
             <Head title="Profil Saya" />
@@ -323,12 +439,73 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                     >
                         <Card className="p-5 md:p-8 bg-gradient-to-br from-green-50 via-yellow-50 to-orange-50 border-2 border-green-200/50 shadow-xl">
                             <div className="flex items-start gap-4 md:gap-6">
-                                <motion.div
-                                    whileHover={{ scale: 1.05, rotate: 5 }}
-                                    className="w-20 h-20 md:w-24 md:h-24 bg-gradient-to-br from-green-500 to-yellow-500 rounded-full flex items-center justify-center text-3xl md:text-4xl flex-shrink-0 shadow-lg"
-                                >
-                                    👨‍🌾
-                                </motion.div>
+                                <div className="relative group">
+                                    <motion.div
+                                        whileHover={{ scale: 1.05 }}
+                                        className="w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg overflow-hidden bg-gradient-to-br from-green-500 to-yellow-500"
+                                    >
+                                        {profilePhotoPreview && !imageLoadError ? (
+                                            <img 
+                                                src={profilePhotoPreview + (profilePhotoPreview.includes('?') ? '&' : '?') + 't=' + Date.now()} 
+                                                alt={userData.name}
+                                                className="w-full h-full object-cover"
+                                                onError={() => {
+                                                    // Set error state instead of manipulating DOM
+                                                    setImageLoadError(true);
+                                                }}
+                                                onLoad={() => {
+                                                    // Reset error state if image loads successfully
+                                                    setImageLoadError(false);
+                                                }}
+                                            />
+                                        ) : (
+                                            <span className="text-3xl md:text-4xl">👨‍🌾</span>
+                                        )}
+                                    </motion.div>
+                                    <label className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    // Validate file size (max 5MB)
+                                                    if (file.size > 5 * 1024 * 1024) {
+                                                        alert('Ukuran file terlalu besar. Maksimal 5MB.');
+                                                        return;
+                                                    }
+                                                    
+                                                    // Validate file type
+                                                    if (!file.type.startsWith('image/')) {
+                                                        alert('File harus berupa gambar.');
+                                                        return;
+                                                    }
+                                                    
+                                                    setProfilePhoto(file);
+                                                    setImageLoadError(false); // Reset error state when new file is selected
+                                                    
+                                                    // Create temporary preview for immediate feedback
+                                                    const reader = new FileReader();
+                                                    reader.onload = (e) => {
+                                                        // Set temporary preview (will be replaced by server URL after upload)
+                                                        setProfilePhotoPreview(e.target?.result);
+                                                    };
+                                                    reader.readAsDataURL(file);
+                                                    
+                                                    // Upload immediately - server URL will replace preview in onSuccess
+                                                    handleUploadPhoto(file);
+                                                }
+                                            }}
+                                        />
+                                        <Camera className="w-6 h-6 text-white" />
+                                    </label>
+                                    {isUploadingPhoto && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">
+                                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex-1">
                                     <div className="flex items-start justify-between mb-3">
                                         <div>
@@ -533,6 +710,18 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                                         <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-emerald-400/10 to-green-400/10 rounded-full blur-3xl -ml-24 -mb-24"></div>
                                         
                                         <div className="relative z-10">
+                                            {/* Back Button */}
+                                            <div className="mb-4">
+                                                <Button
+                                                    variant="outline"
+                                                    onClick={handleCloseUserManagement}
+                                                    className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+                                                >
+                                                    <ChevronRight className="w-4 h-4 rotate-180" />
+                                                    Kembali
+                                                </Button>
+                                            </div>
+                                            
                                             {/* Enhanced Header */}
                                             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6 pb-4 sm:pb-6 border-b-2 border-green-200/50">
                                                 <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
@@ -645,12 +834,11 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                                                     <select
                                                         value={roleFilter}
                                                         onChange={(e) => handleRoleFilterChange(e.target.value)}
-                                                        className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 sm:py-3.5 bg-white/90 backdrop-blur-sm border-2 border-gray-200 rounded-xl focus:border-green-500 focus:ring-4 focus:ring-green-500/20 outline-none transition-all shadow-md hover:shadow-lg text-sm sm:text-base font-medium sm:min-w-[160px]"
+                                                        className="flex-1 sm:flex-none px-2.5 sm:px-4 py-2 sm:py-3.5 bg-gradient-to-br from-white to-green-50/30 text-gray-900 border-2 border-gray-300 rounded-lg sm:rounded-xl focus:border-green-500 focus:ring-2 sm:focus:ring-4 focus:ring-green-500/20 outline-none transition-all shadow-md hover:shadow-lg text-xs sm:text-base font-medium sm:min-w-[160px] cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23334155%22%20d%3D%22M6%209L1%204h10z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px] sm:bg-[length:12px] bg-[right_8px_center] sm:bg-[right_12px_center] bg-no-repeat pr-8 sm:pr-10"
                                                     >
                                                         <option value="all">📋 Semua Role</option>
                                                         <option value="k-petani">🌾 K-Petani</option>
                                                         <option value="petani">👨‍🌾 Petani</option>
-                                                        <option value="guest">👤 Guest</option>
                                                     </select>
                                                 </motion.div>
                                             </div>
@@ -985,10 +1173,10 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                             </div>
                             <div className="space-y-4">
                                 {[
-                                    { id: 'notif-deteksi', label: 'Hasil Deteksi Kematangan', checked: true },
-                                    { id: 'notif-penyiraman', label: 'Status Penyiraman', checked: true },
-                                    { id: 'notif-prediksi', label: 'Prediksi Panen', checked: true },
-                                    { id: 'notif-artikel', label: 'Artikel & Tips Baru', checked: false },
+                                    { id: 'notif-deteksi', label: 'Hasil Deteksi Kematangan' },
+                                    { id: 'notif-penyiraman', label: 'Status Penyiraman' },
+                                    { id: 'notif-prediksi', label: 'Prediksi Panen' },
+                                    { id: 'notif-artikel', label: 'Artikel & Tips Baru' },
                                 ].map((notif) => (
                                     <div key={notif.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
                                         <label htmlFor={notif.id} className="text-sm font-medium text-gray-700 cursor-pointer">
@@ -997,7 +1185,11 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                                         <input
                                             type="checkbox"
                                             id={notif.id}
-                                            defaultChecked={notif.checked}
+                                            checked={notificationSettings[notif.id] || false}
+                                            onChange={(e) => setNotificationSettings({
+                                                ...notificationSettings,
+                                                [notif.id]: e.target.checked
+                                            })}
                                             className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
                                         />
                                     </div>
@@ -1014,9 +1206,8 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                         className="space-y-3"
                     >
                         {[
-                            { icon: HelpCircle, label: 'Bantuan & Dukungan', href: '#' },
-                            { icon: Shield, label: 'Privasi & Keamanan', href: '#' },
-                            { icon: Settings, label: 'Pengaturan Umum', href: '#' },
+                            { icon: HelpCircle, label: 'Bantuan & Dukungan', href: route('customer-service'), isLink: true },
+                            { icon: Shield, label: 'Privasi & Keamanan', href: '#', isLink: false },
                         ].map((item, index) => (
                             <motion.div
                                 key={item.label}
@@ -1025,17 +1216,50 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                                 transition={{ delay: 0.5 + index * 0.1 }}
                                 whileHover={{ scale: 1.02, x: 5 }}
                             >
-                                <Card className="p-4 border-2 border-gray-200 hover:border-green-500 hover:bg-green-50/50 transition-all cursor-pointer shadow-md">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <item.icon className="w-5 h-5 text-gray-600" />
-                                            <span className="text-gray-900 font-medium">{item.label}</span>
+                                {item.isLink ? (
+                                    <Link href={item.href}>
+                                        <Card className="p-4 border-2 border-gray-200 hover:border-green-500 hover:bg-green-50/50 transition-all cursor-pointer shadow-md">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <item.icon className="w-5 h-5 text-gray-600" />
+                                                    <span className="text-gray-900 font-medium">{item.label}</span>
+                                                </div>
+                                                <ChevronRight className="w-5 h-5 text-gray-400" />
+                                            </div>
+                                        </Card>
+                                    </Link>
+                                ) : (
+                                    <Card className="p-4 border-2 border-gray-200 hover:border-green-500 hover:bg-green-50/50 transition-all cursor-pointer shadow-md">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <item.icon className="w-5 h-5 text-gray-600" />
+                                                <span className="text-gray-900 font-medium">{item.label}</span>
+                                            </div>
+                                            <ChevronRight className="w-5 h-5 text-gray-400" />
                                         </div>
-                                        <ChevronRight className="w-5 h-5 text-gray-400" />
-                                    </div>
-                                </Card>
+                                    </Card>
+                                )}
                             </motion.div>
                         ))}
+                        
+                        {/* Delete Account Button */}
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.7 }}
+                            whileHover={{ scale: 1.02, x: 5 }}
+                            onClick={() => setShowDeleteAccountModal(true)}
+                        >
+                            <Card className="p-4 border-2 border-red-200 hover:border-red-500 hover:bg-red-50/50 transition-all cursor-pointer shadow-md">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <Trash2 className="w-5 h-5 text-red-600" />
+                                        <span className="text-red-900 font-medium">Hapus Akun</span>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-red-400" />
+                                </div>
+                            </Card>
+                        </motion.div>
                     </motion.div>
 
                     {/* IoT Status (for K-Petani) */}
@@ -1256,14 +1480,13 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                                                 <select
                                                     value={formData.role}
                                                     onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                                                    className={`w-full px-4 py-2.5 border-2 rounded-xl focus:ring-2 focus:ring-green-500/20 outline-none transition-all ${
-                                                        errors.role ? 'border-red-500' : 'border-gray-200 focus:border-green-500'
+                                                    className={`w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border-2 rounded-lg sm:rounded-xl focus:ring-2 sm:focus:ring-4 focus:ring-green-500/20 outline-none transition-all bg-gradient-to-br from-white to-green-50/30 text-gray-900 font-medium shadow-sm hover:shadow-md cursor-pointer appearance-none bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23334155%22%20d%3D%22M6%209L1%204h10z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px] sm:bg-[length:12px] bg-[right_8px_center] sm:bg-[right_12px_center] bg-no-repeat pr-8 sm:pr-10 ${
+                                                        errors.role ? 'border-red-500' : 'border-gray-300 focus:border-green-500'
                                                     }`}
                                                     required
                                                 >
                                                     <option value="petani">Petani</option>
                                                     <option value="k-petani">K-Petani</option>
-                                                    <option value="guest">Guest</option>
                                                 </select>
                                                 {errors.role && <p className="mt-1 text-sm text-red-500">{errors.role}</p>}
                                             </div>
@@ -1457,6 +1680,95 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                                                 className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700"
                                             >
                                                 {isSubmittingProfile ? 'Menyimpan...' : 'Simpan Perubahan'}
+                                            </Button>
+                                        </div>
+                                    </form>
+                                </motion.div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Delete Account Modal */}
+                    <AnimatePresence>
+                        {showDeleteAccountModal && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                                onClick={() => setShowDeleteAccountModal(false)}
+                            >
+                                <motion.div
+                                    initial={{ scale: 0.9, opacity: 0 }}
+                                    animate={{ scale: 1, opacity: 1 }}
+                                    exit={{ scale: 0.9, opacity: 0 }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="bg-white rounded-2xl shadow-2xl max-w-md w-full"
+                                >
+                                    <div className="p-6 border-b border-gray-200">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                                                <Trash2 className="w-5 h-5 text-red-600" />
+                                            </div>
+                                            <h2 className="text-xl font-bold text-gray-900">Hapus Akun</h2>
+                                        </div>
+                                        <p className="text-sm text-gray-600">
+                                            Setelah akun dihapus, semua data dan resource akan dihapus secara permanen. Tindakan ini tidak dapat dibatalkan.
+                                        </p>
+                                    </div>
+
+                                    <form onSubmit={(e) => {
+                                        e.preventDefault();
+                                        setIsDeletingAccount(true);
+                                        router.delete(route('profile.destroy'), {
+                                            data: { password: deleteAccountPassword },
+                                            preserveScroll: true,
+                                            onSuccess: () => {
+                                                router.visit('/');
+                                            },
+                                            onError: (errors) => {
+                                                setIsDeletingAccount(false);
+                                                if (errors.password) {
+                                                    alert(errors.password);
+                                                } else {
+                                                    alert('Gagal menghapus akun. Silakan coba lagi.');
+                                                }
+                                            },
+                                        });
+                                    }} className="p-6 space-y-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Masukkan Password untuk Konfirmasi <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="password"
+                                                value={deleteAccountPassword}
+                                                onChange={(e) => setDeleteAccountPassword(e.target.value)}
+                                                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all text-gray-900 placeholder:text-gray-400"
+                                                placeholder="Password Anda"
+                                                required
+                                            />
+                                        </div>
+
+                                        <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => {
+                                                    setShowDeleteAccountModal(false);
+                                                    setDeleteAccountPassword('');
+                                                }}
+                                                disabled={isDeletingAccount}
+                                                className="border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900"
+                                            >
+                                                Batal
+                                            </Button>
+                                            <Button
+                                                type="submit"
+                                                disabled={isDeletingAccount}
+                                                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white"
+                                            >
+                                                {isDeletingAccount ? 'Menghapus...' : 'Hapus Akun'}
                                             </Button>
                                         </div>
                                     </form>

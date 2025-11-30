@@ -158,5 +158,8 @@ Route::prefix('v1/articles')->group(function () {
             'data' => []
         ]);
     });
+    
+    // Get preview image from URL (Open Graph image)
+    Route::get('/preview-image', [\App\Http\Controllers\ArticleController::class, 'getPreviewImage']);
 });
 

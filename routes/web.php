@@ -1,19 +1,96 @@
 <?php
 
 use App\Http\Controllers\ProfileController;
+use App\Models\Article;
+use App\Models\AboutUs;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 Route::get('/', function () {
+    // Get published articles for Welcome page (all articles, no limit)
+    $articles = Article::where('status', 'published')
+        ->with('creator')
+        ->orderBy('publish_date', 'desc')
+        ->orderBy('created_at', 'desc')
+        ->get()
+        ->map(function ($article) {
+            $publishDate = $article->publish_date instanceof \Carbon\Carbon 
+                ? $article->publish_date 
+                : \Carbon\Carbon::parse($article->publish_date);
+            
+            return [
+                'id' => $article->id,
+                'title' => $article->title,
+                'excerpt' => $article->description,
+                'description' => $article->description,
+                'source' => $article->source_url ? parse_url($article->source_url, PHP_URL_HOST) : null,
+                'externalUrl' => $article->source_url,
+                'date' => $publishDate->format('d M Y'),
+                'year' => $article->year,
+                'image' => '📰',
+                'readTime' => '5 min',
+                'views' => 0,
+                'category' => $article->category ?? 'berita',
+            ];
+        });
+
+    // Define categories for articles
+    $categories = [
+        ['id' => 'semua', 'label' => 'Semua', 'icon' => '📚'],
+        ['id' => 'berita', 'label' => 'Berita Mangga', 'icon' => '📰'],
+        ['id' => 'tips', 'label' => 'Tips Pertanian', 'icon' => '💡'],
+        ['id' => 'teknologi', 'label' => 'Teknologi', 'icon' => '🤖'],
+        ['id' => 'jenis-mangga', 'label' => 'Jenis Mangga', 'icon' => '🥭'],
+        ['id' => 'perawatan', 'label' => 'Perawatan', 'icon' => '🌱'],
+    ];
+
+    // Get team members for Welcome page (load directly from database)
+    $teamMembers = AboutUs::where('is_active', true)
+        ->orderBy('order', 'asc')
+        ->orderBy('created_at', 'asc')
+        ->get()
+        ->map(function ($member) {
+            return [
+                'id' => $member->id,
+                'name' => $member->name,
+                'photo_url' => $member->photo_path ? Storage::url($member->photo_path) : null,
+                'jobdesc' => $member->jobdesc,
+                'description' => $member->description,
+                'order' => $member->order,
+            ];
+        });
+
     return Inertia::render('Welcome', [
         'canLogin' => Route::has('login'),
         'canRegister' => Route::has('register'),
+        'articles' => $articles,
+        'categories' => $categories,
+        'teamMembers' => $teamMembers,
     ]);
 });
 
 // Artikel route - accessible to all users (guest, petani, k-petani)
 Route::get('/artikel', [\App\Http\Controllers\ArticleController::class, 'indexPublic'])->name('artikel');
+
+// About Us - Public access
+Route::get('/api/about-us', [\App\Http\Controllers\AboutUsController::class, 'index'])->name('about-us.index');
+
+// Questions - Guest users can also ask questions
+Route::post('/questions', [\App\Http\Controllers\QuestionController::class, 'store'])->name('questions.store');
+Route::get('/api/questions/my-questions', [\App\Http\Controllers\QuestionController::class, 'myQuestions'])->name('questions.my-questions');
+Route::post('/api/questions/{question}/mark-as-read', [\App\Http\Controllers\QuestionController::class, 'markAsRead'])->name('questions.mark-as-read');
+
+// Chat routes - Guest access (Private chat with K-Petani)
+Route::get('/chat/guest', [\App\Http\Controllers\ChatController::class, 'guestIndex'])->name('chat.guest');
+Route::post('/api/chat/guest/private/send', [\App\Http\Controllers\ChatController::class, 'guestSendPrivateMessage'])->name('chat.guest.private.send');
+Route::get('/api/chat/guest/private/{chatId}/messages', [\App\Http\Controllers\ChatController::class, 'guestGetPrivateMessages'])->name('chat.guest.private.messages');
+Route::post('/api/chat/guest/private/get-or-create', [\App\Http\Controllers\ChatController::class, 'guestGetOrCreatePrivateChat'])->name('chat.guest.private.get-or-create');
+Route::delete('/api/chat/guest/private/{chatId}', [\App\Http\Controllers\ChatController::class, 'deletePrivateChat'])->name('chat.guest.private.delete');
+
+// FAQ - Public access for guest
+Route::get('/api/faqs/public', [\App\Http\Controllers\FAQController::class, 'getPublicFAQs'])->name('faqs.public');
 
 Route::get('/dashboard', [\App\Http\Controllers\DashboardController::class, 'index'])
     ->middleware(['auth', 'verified'])
@@ -26,6 +103,7 @@ Route::middleware('auth')->group(function () {
     // Profile edit/update routes (keep for form submissions)
     Route::get('/profile/edit', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::post('/profile/upload-photo', [ProfileController::class, 'uploadPhoto'])->name('profile.upload-photo');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     
     // Profile API routes
@@ -43,9 +121,9 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('PrediksiPanen');
     })->name('prediksi');
     
-    Route::get('/laporan', function () {
-        return Inertia::render('LaporanEkspor');
-    })->name('laporan');
+    Route::get('/laporan', [\App\Http\Controllers\ReportController::class, 'index'])->name('laporan');
+    Route::match(['get', 'post'], '/laporan/generate', [\App\Http\Controllers\ReportController::class, 'generate'])->name('laporan.generate');
+    Route::get('/laporan/generate-latest', [\App\Http\Controllers\ReportController::class, 'generateLatest'])->name('laporan.generate-latest');
     
     Route::get('/kebun', [\App\Http\Controllers\KebunController::class, 'index'])->name('kebun');
     
@@ -58,9 +136,79 @@ Route::middleware('auth')->group(function () {
     Route::delete('/detections/{id}', [\App\Http\Controllers\DetectionController::class, 'destroy'])->name('detections.destroy');
     Route::delete('/detections', [\App\Http\Controllers\DetectionController::class, 'destroyAll'])->name('detections.destroyAll');
     
-    Route::get('/customer-service', function () {
-        return Inertia::render('CustomerService');
-    })->name('customer-service');
+    // Notifications - Delete and Mark as Read routes
+    Route::delete('/notifications/{id}', [\App\Http\Controllers\NotificationController::class, 'destroy'])->name('notifications.delete');
+    Route::delete('/notifications', [\App\Http\Controllers\NotificationController::class, 'destroyAll'])->name('notifications.delete-all');
+    Route::post('/notifications/{id}/mark-read', [\App\Http\Controllers\NotificationController::class, 'markAsRead'])->name('notifications.mark-read');
+    
+    Route::get('/customer-service', [\App\Http\Controllers\ContactInfoController::class, 'index'])->name('customer-service');
+    
+    // Chat routes (authenticated users)
+    Route::get('/chat', [\App\Http\Controllers\ChatController::class, 'index'])->name('chat.index');
+    Route::get('/api/chat/groups/{groupId}/messages', [\App\Http\Controllers\ChatController::class, 'getGroupMessages'])->name('chat.group.messages');
+    Route::post('/api/chat/groups/{groupId}/messages', [\App\Http\Controllers\ChatController::class, 'sendGroupMessage'])->name('chat.group.send');
+           Route::get('/api/chat/private/{chatId}/messages', [\App\Http\Controllers\ChatController::class, 'getPrivateChatMessages'])->name('chat.private.messages');
+           Route::post('/api/chat/private/get-or-create', [\App\Http\Controllers\ChatController::class, 'getOrCreatePrivateChat'])->name('chat.private.get-or-create');
+           Route::post('/api/chat/private/{chatId}/messages', [\App\Http\Controllers\ChatController::class, 'sendPrivateMessage'])->name('chat.private.send');
+           Route::delete('/api/chat/private/{chatId}', [\App\Http\Controllers\ChatController::class, 'deletePrivateChat'])->name('chat.private.delete');
+           
+           // K-Petani: Take guest chat
+           Route::post('/api/chat/guest/{chatId}/take', [\App\Http\Controllers\ChatController::class, 'takeGuestChat'])->name('chat.guest.take');
+           
+           // Chat notifications
+           Route::get('/api/chat/notifications', [\App\Http\Controllers\ChatController::class, 'getChatNotifications'])->name('chat.notifications');
+    Route::get('/api/chat/available-users', [\App\Http\Controllers\ChatController::class, 'getAvailableUsers'])->name('chat.available-users');
+    
+    // K-Petani: Delete guest chat
+    Route::delete('/api/chat/guest/{chatId}', [\App\Http\Controllers\ChatController::class, 'deleteGuestChat'])->name('chat.guest.delete');
+    
+    // Questions - All authenticated users can ask questions
+    Route::post('/questions', [\App\Http\Controllers\QuestionController::class, 'store'])->name('questions.store');
+    
+    // FAQ Management (K-Petani only)
+    Route::get('/faqs', [\App\Http\Controllers\FAQController::class, 'index'])->name('faqs.index');
+    Route::post('/faqs', [\App\Http\Controllers\FAQController::class, 'store'])->name('faqs.store');
+    Route::put('/faqs/{id}', [\App\Http\Controllers\FAQController::class, 'update'])->name('faqs.update');
+    Route::delete('/faqs/{id}', [\App\Http\Controllers\FAQController::class, 'destroy'])->name('faqs.destroy');
+    
+    // About Us Management (K-Petani only)
+    Route::get('/about-us', function () {
+        $teamMembers = \App\Models\AboutUs::orderBy('order', 'asc')
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->map(function ($member) {
+                return [
+                    'id' => $member->id,
+                    'name' => $member->name,
+                    'photo_url' => $member->photo_path ? Storage::url($member->photo_path) : null,
+                    'jobdesc' => $member->jobdesc,
+                    'description' => $member->description,
+                    'order' => $member->order,
+                    'is_active' => $member->is_active,
+                    'created_at' => $member->created_at?->toISOString(),
+                ];
+            });
+        
+        return Inertia::render('AboutUsManagement', [
+            'teamMembers' => $teamMembers,
+        ]);
+    })->name('about-us.management');
+    Route::post('/about-us', [\App\Http\Controllers\AboutUsController::class, 'store'])->name('about-us.store');
+    Route::post('/about-us/{id}', [\App\Http\Controllers\AboutUsController::class, 'update'])->name('about-us.update'); // Using POST for file upload support
+    Route::delete('/about-us/{id}', [\App\Http\Controllers\AboutUsController::class, 'destroy'])->name('about-us.destroy');
+    
+    // Contact Info CRUD (K-Petani only)
+    Route::middleware('role:k-petani')->group(function () {
+        Route::post('/contact-info', [\App\Http\Controllers\ContactInfoController::class, 'store'])->name('contact-info.store');
+        Route::put('/contact-info/{id}', [\App\Http\Controllers\ContactInfoController::class, 'update'])->name('contact-info.update');
+        Route::delete('/contact-info/{id}', [\App\Http\Controllers\ContactInfoController::class, 'destroy'])->name('contact-info.destroy');
+        
+        // Questions Management (K-Petani only)
+        Route::get('/questions', [\App\Http\Controllers\QuestionController::class, 'index'])->name('questions.index');
+        Route::get('/questions/{question}', [\App\Http\Controllers\QuestionController::class, 'show'])->name('questions.show');
+        Route::put('/questions/{question}', [\App\Http\Controllers\QuestionController::class, 'update'])->name('questions.update');
+        Route::delete('/questions/{question}', [\App\Http\Controllers\QuestionController::class, 'destroy'])->name('questions.destroy');
+    });
     
     // Robot routes (all authenticated users can view)
     Route::prefix('api/robot')->group(function () {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Head, useForm, router } from '@inertiajs/react';
+import { Head, useForm, router, usePage } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
@@ -9,6 +9,7 @@ import { Mail, Lock, User, Phone, Eye, EyeOff, Sparkles } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
 
 export default function LoginRegister({ canResetPassword, status, isRegister = false }) {
+    const { props } = usePage();
     const [isLogin, setIsLogin] = useState(!isRegister);
     
     useEffect(() => {
@@ -34,17 +35,50 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
         role: 'petani',
     });
 
+    // Ensure CSRF token is fresh before submitting
+    const ensureCsrfToken = () => {
+        const csrfToken = props?.csrf || document.querySelector('meta[name="csrf-token"]')?.content;
+        if (csrfToken && window.axios) {
+            window.axios.defaults.headers.common['X-CSRF-TOKEN'] = csrfToken;
+        }
+        return csrfToken;
+    };
+
     const handleLogin = (e) => {
         e.preventDefault();
+        
+        // Ensure CSRF token is fresh
+        ensureCsrfToken();
+        
         loginForm.post(route('login'), {
             onFinish: () => loginForm.reset('password'),
+            onError: (errors) => {
+                console.error('Login errors:', errors);
+                // If 419 error, refresh page to get new CSRF token
+                if (errors && Object.keys(errors).length === 0) {
+                    console.warn('Possible CSRF token mismatch. Refreshing page...');
+                    setTimeout(() => window.location.reload(), 1000);
+                }
+            },
         });
     };
 
     const handleRegister = (e) => {
         e.preventDefault();
+        
+        // Ensure CSRF token is fresh
+        ensureCsrfToken();
+        
         registerForm.post(route('register'), {
             onFinish: () => registerForm.reset('password', 'password_confirmation'),
+            onError: (errors) => {
+                console.error('Register errors:', errors);
+                // If 419 error, refresh page to get new CSRF token
+                if (errors && Object.keys(errors).length === 0) {
+                    console.warn('Possible CSRF token mismatch. Refreshing page...');
+                    setTimeout(() => window.location.reload(), 1000);
+                }
+            },
         });
     };
 
@@ -262,7 +296,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                         </motion.div>
                         
                         <motion.h1 
-                            className="text-green-700 mb-1 text-lg"
+                            className="text-green-700 mb-1 text-lg font-heading"
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.6, delay: 0.5 }}
@@ -274,12 +308,12 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.6, delay: 0.6 }}
                         >
-                            <h1 className="text-green-600 mb-1.5 text-4xl tracking-wider" style={{ fontWeight: 900 }}>
+                            <h1 className="text-green-600 mb-1.5 text-5xl font-heading tracking-wider">
                                 MOV
                             </h1>
                         </motion.div>
                         <motion.p 
-                            className="text-gray-600 italic text-sm"
+                            className="text-gray-600 italic text-sm font-body"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             transition={{ duration: 0.6, delay: 0.7 }}
@@ -307,20 +341,20 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                 <button
                                     type="button"
                                     onClick={() => setIsLogin(true)}
-                                    className={`relative flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors z-10 ${
+                                    className={`relative flex-1 py-2.5 text-sm font-heading rounded-lg transition-colors z-10 ${
                                         isLogin ? 'text-white' : 'text-gray-600 hover:text-gray-900'
                                     }`}
                                 >
-                                    🔐 Login
+                                    Login
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setIsLogin(false)}
-                                    className={`relative flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors z-10 ${
+                                    className={`relative flex-1 py-2.5 text-sm font-heading rounded-lg transition-colors z-10 ${
                                         !isLogin ? 'text-white' : 'text-gray-600 hover:text-gray-900'
                                     }`}
                                 >
-                                    ✨ Register
+                                    Register
                                 </button>
                             </div>
                         </div>
@@ -355,7 +389,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                     className="space-y-3"
                                 >
                                     <div>
-                                        <Label htmlFor="username" className="text-sm font-medium mb-2 flex items-center gap-2 text-gray-700">
+                                        <Label htmlFor="username" className="text-sm font-heading mb-2 flex items-center gap-2 text-gray-800">
                                             <User className="w-4 h-4 text-green-600" />
                                             Username/ID
                                         </Label>
@@ -366,7 +400,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                                 onChange={(e) => loginForm.setData('username', e.target.value)}
                                                 placeholder="Masukkan username/ID" 
                                                 required 
-                                                className="h-11 pl-10 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                                className="h-11 pl-10 text-sm font-body border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
                                             />
                                             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                         </div>
@@ -374,18 +408,18 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <motion.p
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
-                                                className="text-xs text-red-600 mt-1.5 flex items-center gap-1"
+                                                className="text-xs text-red-600 mt-1.5 flex items-center gap-1 font-body"
                                             >
                                                 <span>⚠️</span> {loginForm.errors.username}
                                             </motion.p>
                                         )}
-                                        <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
-                                            <span>💡</span> Gunakan username atau ID Kerja (MK-...-Kiojay)
+                                        <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1 font-body">
+                                            <span>💡</span> Gunakan username atau ID Kerja (Petani atau K-Petani)
                                         </p>
                                     </div>
 
                                     <div>
-                                        <Label htmlFor="password" className="text-sm font-medium mb-2 flex items-center gap-2 text-gray-700">
+                                        <Label htmlFor="password" className="text-sm font-heading mb-2 flex items-center gap-2 text-gray-800">
                                             <Lock className="w-4 h-4 text-green-600" />
                                             Password
                                         </Label>
@@ -397,7 +431,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                                 onChange={(e) => loginForm.setData('password', e.target.value)}
                                                 placeholder="••••••••" 
                                                 required 
-                                                className="h-11 pl-10 pr-10 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                                className="h-11 pl-10 pr-10 text-sm font-body border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
                                             />
                                             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                         </div>
@@ -405,7 +439,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <motion.p
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
-                                                className="text-xs text-red-600 mt-1.5 flex items-center gap-1"
+                                                className="text-xs text-red-600 mt-1.5 flex items-center gap-1 font-body"
                                             >
                                                 <span>⚠️</span> {loginForm.errors.password}
                                             </motion.p>
@@ -414,9 +448,9 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <button
                                                 type="button"
                                                 onClick={handleForgotPassword}
-                                                className="text-xs text-green-600 hover:text-green-700 hover:underline font-medium transition-colors"
+                                                className="text-xs text-green-600 hover:text-green-700 hover:underline font-body transition-colors"
                                             >
-                                                🔑 Lupa password?
+                                                Lupa password?
                                             </button>
                                         </div>
                                     </div>
@@ -437,11 +471,11 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
 
                                     <Button 
                                         type="submit" 
-                                        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 h-11 text-sm font-semibold shadow-lg hover:shadow-xl transition-all duration-300 mt-4" 
+                                        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 h-11 text-sm font-heading shadow-lg hover:shadow-xl transition-all duration-300 mt-4" 
                                         disabled={loginForm.processing}
                                     >
                                         {loginForm.processing ? (
-                                            <span className="flex items-center gap-2">
+                                            <span className="flex items-center gap-2 font-body">
                                                 <motion.div
                                                     animate={{ rotate: 360 }}
                                                     transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
@@ -451,7 +485,6 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             </span>
                                         ) : (
                                             <span className="flex items-center gap-2">
-                                                <Sparkles className="w-4 h-4" />
                                                 Masuk
                                             </span>
                                         )}
@@ -468,7 +501,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                     className="space-y-3"
                                 >
                                     <div>
-                                        <Label htmlFor="name" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
+                                        <Label htmlFor="name" className="text-sm font-heading mb-1.5 flex items-center gap-2 text-gray-800">
                                             <User className="w-3.5 h-3.5 text-green-600" />
                                             Nama Lengkap
                                         </Label>
@@ -479,7 +512,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                                 onChange={(e) => registerForm.setData('name', e.target.value)}
                                                 placeholder="Masukkan nama lengkap" 
                                                 required 
-                                                className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                                className="h-10 pl-9 text-sm font-body border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
                                             />
                                             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                                         </div>
@@ -487,7 +520,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <motion.p
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
-                                                className="text-xs text-red-600 mt-1.5 flex items-center gap-1"
+                                                className="text-xs text-red-600 mt-1.5 flex items-center gap-1 font-body"
                                             >
                                                 <span>⚠️</span> {registerForm.errors.name}
                                             </motion.p>
@@ -496,7 +529,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
 
                                 {selectedRole === 'petani' && (
                                     <div>
-                                        <Label htmlFor="username" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
+                                        <Label htmlFor="username" className="text-sm font-heading mb-1.5 flex items-center gap-2 text-gray-800">
                                             <User className="w-3.5 h-3.5 text-green-600" />
                                             Username
                                         </Label>
@@ -507,7 +540,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                                 onChange={(e) => registerForm.setData('username', e.target.value)}
                                                 placeholder="Masukkan username" 
                                                 required 
-                                                className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                                className="h-10 pl-9 text-sm font-body border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
                                             />
                                             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                                         </div>
@@ -515,7 +548,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <motion.p
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
-                                                className="text-xs text-red-600 mt-1.5 flex items-center gap-1"
+                                                className="text-xs text-red-600 mt-1.5 flex items-center gap-1 font-body"
                                             >
                                                 <span>⚠️</span> {registerForm.errors.username}
                                             </motion.p>
@@ -526,18 +559,18 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                 {/* ID Kerja - Required for Petani and K-Petani */}
                                 {(selectedRole === 'petani' || selectedRole === 'k-petani') && (
                                     <div>
-                                        <Label htmlFor="id_kerja" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
+                                        <Label htmlFor="id_kerja" className="text-sm font-heading mb-1.5 flex items-center gap-2 text-gray-800">
                                             <User className="w-3.5 h-3.5 text-green-600" />
-                                            ID Kerja <span className="text-red-500">*</span>
+                                            {selectedRole === 'k-petani' ? 'ID Kerja K-Petani' : 'ID Petani'} <span className="text-red-500">*</span>
                                         </Label>
                                         <div className="relative">
                                             <Input 
                                                 id="id_kerja" 
                                                 value={registerForm.data.id_kerja}
                                                 onChange={(e) => registerForm.setData('id_kerja', e.target.value)}
-                                                placeholder="Masukkan ID Kerja dari K-Petani" 
+                                                placeholder={selectedRole === 'k-petani' ? 'Masukkan ID Kerja K-Petani' : 'Masukkan ID Petani dari K-Petani'} 
                                                 required 
-                                                className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                                className="h-10 pl-9 text-sm font-body border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
                                             />
                                             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                                         </div>
@@ -545,15 +578,15 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <motion.p
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
-                                                className="text-xs text-red-600 mt-1 flex items-center gap-1"
+                                                className="text-xs text-red-600 mt-1 flex items-center gap-1 font-body"
                                             >
                                                 <span>⚠️</span> {registerForm.errors.id_kerja}
                                             </motion.p>
                                         )}
-                                        <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                        <p className="text-xs text-gray-500 mt-1 flex items-center gap-1 font-body">
                                             <span>💡</span> {selectedRole === 'k-petani' 
-                                                ? 'ID Kerja wajib. Dapatkan ID Kerja dari K-Petani yang sudah terdaftar.' 
-                                                : 'ID Kerja wajib. Dapatkan ID Kerja dari K-Petani untuk bisa registrasi.'}
+                                                ? 'ID Kerja K-Petani wajib. Dapatkan ID Kerja K-Petani dari K-Petani yang sudah terdaftar.' 
+                                                : 'ID Petani wajib. Dapatkan ID Petani dari K-Petani untuk bisa registrasi.'}
                                         </p>
                                     </div>
                                 )}
@@ -561,9 +594,9 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                 {/* Username - Optional for K-Petani */}
                                 {selectedRole === 'k-petani' && (
                                     <div>
-                                        <Label htmlFor="username" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
+                                        <Label htmlFor="username" className="text-sm font-heading mb-1.5 flex items-center gap-2 text-gray-800">
                                             <User className="w-3.5 h-3.5 text-green-600" />
-                                            Username <span className="text-gray-400 text-xs">(Opsional)</span>
+                                            Username <span className="text-gray-400 text-xs font-body">(Opsional)</span>
                                         </Label>
                                         <div className="relative">
                                             <Input 
@@ -571,7 +604,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                                 value={registerForm.data.username}
                                                 onChange={(e) => registerForm.setData('username', e.target.value)}
                                                 placeholder="Masukkan username (opsional)" 
-                                                className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                                className="h-10 pl-9 text-sm font-body border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
                                             />
                                             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                                         </div>
@@ -579,12 +612,12 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <motion.p
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
-                                                className="text-xs text-red-600 mt-1 flex items-center gap-1"
+                                                className="text-xs text-red-600 mt-1 flex items-center gap-1 font-body"
                                             >
                                                 <span>⚠️</span> {registerForm.errors.username}
                                             </motion.p>
                                         )}
-                                        <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                        <p className="text-xs text-gray-500 mt-1 flex items-center gap-1 font-body">
                                             <span>💡</span> Username untuk login alternatif (opsional)
                                         </p>
                                     </div>
@@ -593,7 +626,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                 {/* Email and Phone in Grid */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div>
-                                        <Label htmlFor="email" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
+                                        <Label htmlFor="email" className="text-sm font-heading mb-1.5 flex items-center gap-2 text-gray-800">
                                             <Mail className="w-3.5 h-3.5 text-green-600" />
                                             Email
                                         </Label>
@@ -605,7 +638,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                                 onChange={(e) => registerForm.setData('email', e.target.value)}
                                                 placeholder="contoh@email.com" 
                                                 required 
-                                                className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                                className="h-10 pl-9 text-sm font-body border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
                                             />
                                             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                                         </div>
@@ -613,7 +646,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <motion.p
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
-                                                className="text-xs text-red-600 mt-1 flex items-center gap-1"
+                                                className="text-xs text-red-600 mt-1 flex items-center gap-1 font-body"
                                             >
                                                 <span>⚠️</span> {registerForm.errors.email}
                                             </motion.p>
@@ -621,9 +654,9 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                     </div>
 
                                     <div>
-                                        <Label htmlFor="phone" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
+                                        <Label htmlFor="phone" className="text-sm font-heading mb-1.5 flex items-center gap-2 text-gray-800">
                                             <Phone className="w-3.5 h-3.5 text-green-600" />
-                                            No. Telepon <span className="text-gray-400 text-xs">(Ops)</span>
+                                            No. Telepon <span className="text-gray-400 text-xs font-body">(Ops)</span>
                                         </Label>
                                         <div className="relative">
                                             <Input 
@@ -632,7 +665,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                                 value={registerForm.data.phone}
                                                 onChange={(e) => registerForm.setData('phone', e.target.value)}
                                                 placeholder="081234567890" 
-                                                className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                                className="h-10 pl-9 text-sm font-body border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
                                             />
                                             <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                                         </div>
@@ -640,7 +673,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <motion.p
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
-                                                className="text-xs text-red-600 mt-1 flex items-center gap-1"
+                                                className="text-xs text-red-600 mt-1 flex items-center gap-1 font-body"
                                             >
                                                 <span>⚠️</span> {registerForm.errors.phone}
                                             </motion.p>
@@ -651,7 +684,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                 {/* Password Fields in Grid */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div>
-                                        <Label htmlFor="password" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
+                                        <Label htmlFor="password" className="text-sm font-heading mb-1.5 flex items-center gap-2 text-gray-800">
                                             <Lock className="w-3.5 h-3.5 text-green-600" />
                                             Password
                                         </Label>
@@ -663,7 +696,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                                 onChange={(e) => registerForm.setData('password', e.target.value)}
                                                 placeholder="••••••••" 
                                                 required 
-                                                className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                                className="h-10 pl-9 text-sm font-body border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
                                             />
                                             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                                         </div>
@@ -671,18 +704,18 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <motion.p
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
-                                                className="text-xs text-red-600 mt-1 flex items-center gap-1"
+                                                className="text-xs text-red-600 mt-1 flex items-center gap-1 font-body"
                                             >
                                                 <span>⚠️</span> {registerForm.errors.password}
                                             </motion.p>
                                         )}
-                                        <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                                        <p className="text-xs text-amber-600 mt-1 flex items-center gap-1 font-body">
                                             <span>⚠️</span> Kapital, kecil, angka
                                         </p>
                                     </div>
 
                                     <div>
-                                        <Label htmlFor="password_confirmation" className="text-sm font-medium mb-1.5 flex items-center gap-2 text-gray-700">
+                                        <Label htmlFor="password_confirmation" className="text-sm font-heading mb-1.5 flex items-center gap-2 text-gray-800">
                                             <Lock className="w-3.5 h-3.5 text-green-600" />
                                             Konfirmasi
                                         </Label>
@@ -694,7 +727,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                                 onChange={(e) => registerForm.setData('password_confirmation', e.target.value)}
                                                 placeholder="••••••••" 
                                                 required 
-                                                className="h-10 pl-9 text-sm border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
+                                                className="h-10 pl-9 text-sm font-body border-2 border-gray-200 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 rounded-xl transition-all" 
                                             />
                                             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
                                         </div>
@@ -702,7 +735,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             <motion.p
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
-                                                className="text-xs text-red-600 mt-1 flex items-center gap-1"
+                                                className="text-xs text-red-600 mt-1 flex items-center gap-1 font-body"
                                             >
                                                 <span>⚠️</span> {registerForm.errors.password_confirmation}
                                             </motion.p>
@@ -711,7 +744,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                 </div>
 
                                 <div>
-                                    <Label className="text-sm font-medium mb-2 block text-gray-700">Tipe Pengguna</Label>
+                                    <Label className="text-sm font-heading mb-2 block text-gray-800">Tipe Pengguna</Label>
                                     <div className="flex gap-2">
                                         <motion.button
                                             type="button"
@@ -728,8 +761,8 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             }`}
                                         >
                                             <div className="text-xl mb-1">👨‍🌾</div>
-                                            <div className="text-xs font-semibold text-gray-700">Petani Umum</div>
-                                            <div className="text-[10px] text-gray-500 mt-0.5">Akses Terbatas</div>
+                                            <div className="text-xs font-heading text-gray-800">Petani Umum</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 font-body">Akses Terbatas</div>
                                         </motion.button>
                                         <motion.button
                                             type="button"
@@ -746,19 +779,19 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                             }`}
                                         >
                                             <div className="text-xl mb-1">🌾</div>
-                                            <div className="text-xs font-semibold text-gray-700">K-Petani</div>
-                                            <div className="text-[10px] text-gray-500 mt-0.5">Akses Penuh</div>
+                                            <div className="text-xs font-heading text-gray-800">K-Petani</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 font-body">Akses Penuh</div>
                                         </motion.button>
                                     </div>
                                 </div>
 
                                 <Button 
                                     type="submit" 
-                                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 h-10 text-sm font-semibold shadow-lg hover:shadow-xl transition-all duration-300 mt-3" 
+                                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 h-10 text-sm font-heading shadow-lg hover:shadow-xl transition-all duration-300 mt-3" 
                                     disabled={registerForm.processing}
                                 >
                                     {registerForm.processing ? (
-                                        <span className="flex items-center gap-2">
+                                        <span className="flex items-center gap-2 font-body">
                                             <motion.div
                                                 animate={{ rotate: 360 }}
                                                 transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
@@ -768,7 +801,6 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                         </span>
                                     ) : (
                                         <span className="flex items-center gap-2">
-                                            <Sparkles className="w-4 h-4" />
                                             Daftar Sekarang
                                         </span>
                                     )}
@@ -778,13 +810,13 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                         </AnimatePresence>
 
                             <div className="mt-4 pt-4 border-t border-gray-200 text-center">
-                                <p className="text-gray-600 mb-2 text-xs">Atau jelajahi sebagai tamu</p>
+                                <p className="text-gray-600 mb-2 text-xs font-body">Atau jelajahi sebagai tamu</p>
                                 <Button
                                     variant="outline"
                                     onClick={() => router.visit('/')}
-                                    className="w-full border-2 border-green-200 hover:bg-green-50 hover:border-green-300 h-9 text-xs font-medium transition-all"
+                                    className="w-full border-2 border-green-200 hover:bg-green-50 hover:border-green-300 h-9 text-xs font-heading transition-all"
                                 >
-                                    📚 Lihat Artikel Mangga
+                                    Lihat Beranda
                                 </Button>
                             </div>
                         </div>
@@ -812,11 +844,11 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                         animate={{ scale: 1, rotate: 0 }}
                         transition={{ duration: 0.8, ease: [0.34, 1.56, 0.64, 1] }}
                     />
-                    <h1 className="text-green-700 mb-1 text-sm">Selamat datang di</h1>
-                    <h1 className="text-green-600 mb-2 text-4xl tracking-wider font-black">
+                    <h1 className="text-green-700 mb-1 text-sm font-heading">Selamat datang di</h1>
+                    <h1 className="text-green-600 mb-2 text-4xl tracking-wider font-heading">
                         MOV
                     </h1>
-                    <p className="text-gray-600 italic text-xs">Mango as an Object Vision</p>
+                    <p className="text-gray-600 italic text-xs font-body">Mango as an Object Vision</p>
                 </motion.div>
 
                 <Card className="w-full max-w-md mx-auto p-6 shadow-2xl bg-white/95 backdrop-blur-xl border border-green-100/50 relative z-10">
@@ -834,41 +866,42 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                         <button
                             type="button"
                             onClick={() => setIsLogin(true)}
-                            className={`relative flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors z-10 ${
+                            className={`relative flex-1 py-2.5 text-sm font-heading rounded-lg transition-colors z-10 ${
                                 isLogin ? 'text-white' : 'text-gray-600'
                             }`}
                         >
-                            🔐 Login
+                            Login
                         </button>
                         <button
                             type="button"
                             onClick={() => setIsLogin(false)}
-                            className={`relative flex-1 py-2.5 text-sm font-semibold rounded-lg transition-colors z-10 ${
+                            className={`relative flex-1 py-2.5 text-sm font-heading rounded-lg transition-colors z-10 ${
                                 !isLogin ? 'text-white' : 'text-gray-600'
                             }`}
                         >
-                            ✨ Register
+                            Register
                         </button>
                     </div>
 
                     {isLogin ? (
                         <form onSubmit={handleLogin} className="space-y-4">
                             <div>
-                                <Label htmlFor="username">Username/ID</Label>
+                                <Label htmlFor="username" className="font-heading">Username/ID</Label>
                                 <Input 
                                     id="username" 
                                     value={loginForm.data.username}
                                     onChange={(e) => loginForm.setData('username', e.target.value)}
                                     placeholder="Masukkan username/ID" 
                                     required 
+                                    className="font-body"
                                 />
                                 {loginForm.errors.username && (
-                                    <p className="text-xs text-red-600 mt-1">{loginForm.errors.username}</p>
+                                    <p className="text-xs text-red-600 mt-1 font-body">{loginForm.errors.username}</p>
                                 )}
                             </div>
 
                             <div>
-                                <Label htmlFor="password">Password</Label>
+                                <Label htmlFor="password" className="font-heading">Password</Label>
                                 <Input 
                                     id="password" 
                                     type="password" 
@@ -876,65 +909,71 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                     onChange={(e) => loginForm.setData('password', e.target.value)}
                                     placeholder="••••••••" 
                                     required 
+                                    className="font-body"
                                 />
                                 {loginForm.errors.password && (
-                                    <p className="text-xs text-red-600 mt-1">{loginForm.errors.password}</p>
+                                    <p className="text-xs text-red-600 mt-1 font-body">{loginForm.errors.password}</p>
                                 )}
                             </div>
 
-                            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={loginForm.processing}>
+                            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 font-heading" disabled={loginForm.processing}>
                                 Masuk
                             </Button>
                         </form>
                     ) : (
                         <form onSubmit={handleRegister} className="space-y-4">
                             <div>
-                                <Label htmlFor="name">Nama Lengkap</Label>
+                                <Label htmlFor="name" className="font-heading">Nama Lengkap</Label>
                                 <Input 
                                     id="name" 
                                     value={registerForm.data.name}
                                     onChange={(e) => registerForm.setData('name', e.target.value)}
                                     placeholder="Masukkan nama lengkap" 
                                     required 
+                                    className="font-body"
                                 />
                                 {registerForm.errors.name && (
-                                    <p className="text-xs text-red-600 mt-1">{registerForm.errors.name}</p>
+                                    <p className="text-xs text-red-600 mt-1 font-body">{registerForm.errors.name}</p>
                                 )}
                             </div>
 
                             {/* ID Kerja - Required for Petani and K-Petani */}
                             {(selectedRole === 'petani' || selectedRole === 'k-petani') && (
                                 <div>
-                                    <Label htmlFor="id_kerja">ID Kerja <span className="text-red-500">*</span></Label>
+                                    <Label htmlFor="id_kerja" className="font-heading">{selectedRole === 'k-petani' ? 'ID Kerja K-Petani' : 'ID Petani'} <span className="text-red-500">*</span></Label>
                                     <Input 
                                         id="id_kerja" 
                                         value={registerForm.data.id_kerja}
                                         onChange={(e) => registerForm.setData('id_kerja', e.target.value)}
-                                        placeholder="Masukkan ID Kerja dari K-Petani" 
+                                        placeholder={selectedRole === 'k-petani' ? 'Masukkan ID Kerja K-Petani' : 'Masukkan ID Petani dari K-Petani'} 
                                         required 
+                                        className="font-body"
                                     />
                                     {registerForm.errors.id_kerja && (
-                                        <p className="text-xs text-red-600 mt-1">{registerForm.errors.id_kerja}</p>
+                                        <p className="text-xs text-red-600 mt-1 font-body">{registerForm.errors.id_kerja}</p>
                                     )}
-                                    <p className="text-xs text-gray-500 mt-1">
-                                        ID Kerja wajib. Dapatkan ID Kerja dari K-Petani yang sudah terdaftar.
+                                    <p className="text-xs text-gray-500 mt-1 font-body">
+                                        {selectedRole === 'k-petani' 
+                                            ? 'ID Kerja K-Petani wajib. Dapatkan ID Kerja K-Petani dari K-Petani yang sudah terdaftar.'
+                                            : 'ID Petani wajib. Dapatkan ID Petani dari K-Petani untuk bisa registrasi.'}
                                     </p>
                                 </div>
                             )}
 
                             <div>
-                                <Label htmlFor="username">Username</Label>
+                                <Label htmlFor="username" className="font-heading">Username</Label>
                                 <Input 
                                     id="username" 
                                     value={registerForm.data.username}
                                     onChange={(e) => registerForm.setData('username', e.target.value)}
                                     placeholder="Masukkan username" 
                                     required 
+                                    className="font-body"
                                 />
                             </div>
 
                             <div>
-                                <Label htmlFor="email">Email</Label>
+                                <Label htmlFor="email" className="font-heading">Email</Label>
                                 <Input 
                                     id="email" 
                                     type="email" 
@@ -942,11 +981,12 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                     onChange={(e) => registerForm.setData('email', e.target.value)}
                                     placeholder="contoh@email.com" 
                                     required 
+                                    className="font-body"
                                 />
                             </div>
 
                             <div>
-                                <Label htmlFor="password">Password</Label>
+                                <Label htmlFor="password" className="font-heading">Password</Label>
                                 <Input 
                                     id="password" 
                                     type="password" 
@@ -954,11 +994,12 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                     onChange={(e) => registerForm.setData('password', e.target.value)}
                                     placeholder="••••••••" 
                                     required 
+                                    className="font-body"
                                 />
                             </div>
 
                             <div>
-                                <Label htmlFor="password_confirmation">Konfirmasi Password</Label>
+                                <Label htmlFor="password_confirmation" className="font-heading">Konfirmasi Password</Label>
                                 <Input 
                                     id="password_confirmation" 
                                     type="password" 
@@ -966,11 +1007,12 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                     onChange={(e) => registerForm.setData('password_confirmation', e.target.value)}
                                     placeholder="••••••••" 
                                     required 
+                                    className="font-body"
                                 />
                             </div>
 
                             <div>
-                                <Label>Tipe Pengguna</Label>
+                                <Label className="font-heading">Tipe Pengguna</Label>
                                 <div className="flex gap-2 mt-2">
                                     <button
                                         type="button"
@@ -985,7 +1027,7 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                         }`}
                                     >
                                         <div className="text-2xl mb-1">👨‍🌾</div>
-                                        <div className="text-sm">Petani Umum</div>
+                                        <div className="text-sm font-heading">Petani Umum</div>
                                     </button>
                                     <button
                                         type="button"
@@ -1000,12 +1042,12 @@ export default function LoginRegister({ canResetPassword, status, isRegister = f
                                         }`}
                                     >
                                         <div className="text-2xl mb-1">🌾</div>
-                                        <div className="text-sm">K-Petani</div>
+                                        <div className="text-sm font-heading">K-Petani</div>
                                     </button>
                                 </div>
                             </div>
 
-                            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700" disabled={registerForm.processing}>
+                            <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 font-heading" disabled={registerForm.processing}>
                                 Daftar
                             </Button>
                         </form>

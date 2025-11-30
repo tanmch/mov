@@ -589,15 +589,20 @@ export default function MonitoringSensor({
     // Define this function BEFORE using it
     const getDisplayedSensorValue = (sensorType) => {
         // Priority: Firebase realtimeSensors > MySQL currentSensors
+        let value = null;
         if (realtimeSensors?.[sensorType]?.value !== undefined && realtimeSensors?.[sensorType]?.value !== null && realtimeSensors?.[sensorType]?.value !== 0) {
-            return realtimeSensors[sensorType].value;
+            value = realtimeSensors[sensorType].value;
+        } else {
+            // Fallback to MySQL data
+            const mysqlSensor = currentSensors?.[sensorType];
+            if (mysqlSensor && mysqlSensor.value !== undefined && mysqlSensor.value !== null) {
+                value = mysqlSensor.value;
+            }
         }
-        // Fallback to MySQL data
-        const mysqlSensor = currentSensors?.[sensorType];
-        if (mysqlSensor && mysqlSensor.value !== undefined && mysqlSensor.value !== null) {
-            return mysqlSensor.value;
-        }
-        return 0; // Default to 0 if no data
+        
+        // Convert to number and ensure it's a valid number
+        const numValue = typeof value === 'number' ? value : parseFloat(value);
+        return isNaN(numValue) ? 0 : numValue;
     };
     
     // Get sensor values with fallback (prioritize real-time data)
@@ -809,10 +814,11 @@ export default function MonitoringSensor({
 
         // Setup listeners for each blok (listen to all bloks to populate allBlokSensorData)
         allBloksToListen.forEach(blok => {
-            const kebunId = blok.kebun_id || blok.kebun?.id;
+            // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+            const kebunId = 1;
             const blokCode = blok.code;
             
-            if (!kebunId || !blokCode) return;
+            if (!blokCode) return;
 
             const firebasePath = `kebuns/kebun_${kebunId}/bloks/${blokCode}/sensors`;
             const sensorRef = ref(database, firebasePath);
@@ -1558,7 +1564,7 @@ export default function MonitoringSensor({
                                     </div>
                                     <p className="text-sm font-semibold text-gray-600 mb-2">Suhu Udara</p>
                                     <div className="flex items-baseline gap-2 mb-1">
-                                        <p className="text-3xl font-extrabold text-orange-700">{suhuUdara.toFixed(1)}°C</p>
+                                        <p className="text-3xl font-extrabold text-orange-700">{typeof suhuUdara === 'number' ? suhuUdara.toFixed(1) : '0.0'}°C</p>
                                         {suhuStatus !== 'normal' && (
                                             <motion.div
                                                 animate={{ scale: [1, 1.2, 1] }}
@@ -1570,7 +1576,7 @@ export default function MonitoringSensor({
                                     <div className="mt-4 h-2 bg-orange-200 rounded-full overflow-hidden">
                                         <motion.div
                                             initial={{ width: 0 }}
-                                            animate={{ width: `${Math.min((suhuUdara / 50) * 100, 100)}%` }}
+                                            animate={{ width: `${Math.min(((typeof suhuUdara === 'number' ? suhuUdara : 0) / 50) * 100, 100)}%` }}
                                             transition={{ duration: 1, ease: "easeOut" }}
                                             className="h-full bg-gradient-to-r from-orange-500 to-amber-500 rounded-full"
                                         />
@@ -1609,7 +1615,7 @@ export default function MonitoringSensor({
                                     </div>
                                     <p className="text-sm font-semibold text-gray-600 mb-2">Kelembaban Udara</p>
                                     <div className="flex items-baseline gap-2 mb-1">
-                                        <p className="text-3xl font-extrabold text-blue-700">{kelembabanUdara.toFixed(1)}%</p>
+                                        <p className="text-3xl font-extrabold text-blue-700">{typeof kelembabanUdara === 'number' ? kelembabanUdara.toFixed(1) : '0.0'}%</p>
                                         {kelembabanUdaraStatus !== 'normal' && (
                                             <motion.div
                                                 animate={{ scale: [1, 1.2, 1] }}
@@ -1621,7 +1627,7 @@ export default function MonitoringSensor({
                                     <div className="mt-4 h-2 bg-blue-200 rounded-full overflow-hidden">
                                         <motion.div
                                             initial={{ width: 0 }}
-                                            animate={{ width: `${Math.min((kelembabanUdara / 100) * 100, 100)}%` }}
+                                            animate={{ width: `${Math.min(((typeof kelembabanUdara === 'number' ? kelembabanUdara : 0) / 100) * 100, 100)}%` }}
                                             transition={{ duration: 1, ease: "easeOut" }}
                                             className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full"
                                         />
@@ -1660,7 +1666,7 @@ export default function MonitoringSensor({
                                     </div>
                                     <p className="text-sm font-semibold text-gray-600 mb-2">Kelembaban Tanah</p>
                                     <div className="flex items-baseline gap-2 mb-1">
-                                        <p className="text-3xl font-extrabold text-emerald-700">{kelembabanTanah.toFixed(1)}%</p>
+                                        <p className="text-3xl font-extrabold text-emerald-700">{typeof kelembabanTanah === 'number' ? kelembabanTanah.toFixed(1) : '0.0'}%</p>
                                         {kelembabanTanahStatus !== 'normal' && (
                                             <motion.div
                                                 animate={{ scale: [1, 1.2, 1] }}
@@ -1672,7 +1678,7 @@ export default function MonitoringSensor({
                                     <div className="mt-4 h-2 bg-emerald-200 rounded-full overflow-hidden">
                                         <motion.div
                                             initial={{ width: 0 }}
-                                            animate={{ width: `${Math.min((kelembabanTanah / 100) * 100, 100)}%` }}
+                                            animate={{ width: `${Math.min(((typeof kelembabanTanah === 'number' ? kelembabanTanah : 0) / 100) * 100, 100)}%` }}
                                             transition={{ duration: 1, ease: "easeOut" }}
                                             className="h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full"
                                         />

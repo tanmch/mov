@@ -1,9 +1,21 @@
+// hooks/useMangoDetection.js
 import { useState, useRef, useCallback } from 'react';
+import * as ort from 'onnxruntime-web';
 
 const CLASS_NAMES = ['Half-Ripe', 'Not_Mango', 'OverRipe', 'Ripe', 'Unripe'];
 const MODEL_PATH = '/ml-models/best.onnx';
 const INPUT_SIZE = 640;
-const CONF_THRESHOLD = 0.25;
+const DEFAULT_CONF_THRESHOLD = 0.15;
+const DEFAULT_IOU_THRESHOLD = 0.5;
+
+// Default threshold per kelas untuk akurasi yang lebih baik
+const DEFAULT_CLASS_THRESHOLDS = {
+    'Unripe': 0.15,
+    'Half-Ripe': 0.20,
+    'Ripe': 0.25,
+    'OverRipe': 0.20,
+    'Not_Mango': 0.10,
+};
 
 // Map class names to maturity status
 const getMaturityStatus = (className, confidence) => {
@@ -19,10 +31,13 @@ const getMaturityStatus = (className, confidence) => {
 };
 
 export function useMangoDetection() {
-    const [model, setModel] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isModelLoaded, setIsModelLoaded] = useState(false);
     const [error, setError] = useState(null);
+    const [confidenceThreshold, setConfidenceThreshold] = useState(DEFAULT_CONF_THRESHOLD); // Global threshold (fallback)
+    const [classThresholds, setClassThresholds] = useState(DEFAULT_CLASS_THRESHOLDS); // Threshold per kelas
+    const [iouThreshold, setIouThreshold] = useState(DEFAULT_IOU_THRESHOLD);
+    
     const modelRef = useRef(null);
 
     // Load ONNX model
@@ -36,26 +51,14 @@ export function useMangoDetection() {
             setIsLoading(true);
             setError(null);
             
-            // Load ONNX Runtime Web
-            if (typeof window !== 'undefined' && !window.ort) {
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js';
-                script.async = true;
-                await new Promise((resolve, reject) => {
-                    script.onload = resolve;
-                    script.onerror = reject;
-                    document.head.appendChild(script);
-                });
-            }
-
-            const session = await window.ort.InferenceSession.create(MODEL_PATH, {
+            const session = await ort.InferenceSession.create(MODEL_PATH, {
                 executionProviders: ['wasm']
             });
 
             modelRef.current = session;
-            setModel(session);
             setIsModelLoaded(true);
             setIsLoading(false);
+            console.log('✅ Model loaded successfully');
             return session;
         } catch (err) {
             console.error('Error loading model:', err);
@@ -65,120 +68,43 @@ export function useMangoDetection() {
         }
     }, []);
 
-    // Preprocess image
+    // Preprocess image - letterbox ke 640x640
     const preprocess = useCallback((img) => {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = INPUT_SIZE;
         canvas.height = INPUT_SIZE;
         
+        // Letterbox dengan padding
         const scale = Math.min(INPUT_SIZE / img.width, INPUT_SIZE / img.height);
         const w = img.width * scale;
         const h = img.height * scale;
-        const x = (INPUT_SIZE - w) / 2;
-        const y = (INPUT_SIZE - h) / 2;
+        const offsetX = (INPUT_SIZE - w) / 2;
+        const offsetY = (INPUT_SIZE - h) / 2;
         
+        // Background hitam
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
-        ctx.drawImage(img, x, y, w, h);
+        ctx.drawImage(img, offsetX, offsetY, w, h);
         
+        // Convert ke tensor [1, 3, 640, 640] channel-first, normalized 0-1
         const data = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE).data;
         const tensor = new Float32Array(3 * INPUT_SIZE * INPUT_SIZE);
         
         for (let i = 0; i < INPUT_SIZE * INPUT_SIZE; i++) {
-            tensor[i] = data[i * 4] / 255.0;
-            tensor[i + INPUT_SIZE * INPUT_SIZE] = data[i * 4 + 1] / 255.0;
-            tensor[i + 2 * INPUT_SIZE * INPUT_SIZE] = data[i * 4 + 2] / 255.0;
+            tensor[i] = data[i * 4] / 255.0; // R
+            tensor[i + INPUT_SIZE * INPUT_SIZE] = data[i * 4 + 1] / 255.0; // G
+            tensor[i + 2 * INPUT_SIZE * INPUT_SIZE] = data[i * 4 + 2] / 255.0; // B
         }
         
-        return { tensor, scale, x, y, origW: img.width, origH: img.height };
-    }, []);
-
-    // Postprocess output
-    const postprocess = useCallback((output, scale, x, y, origW, origH) => {
-        const detections = [];
-        const data = output.data;
-        const dims = output.dims;
-        
-        if (dims.length === 3) {
-            if (dims[1] === 84 || dims[1] === (4 + CLASS_NAMES.length)) {
-                const numDets = dims[2];
-                const numFeats = dims[1];
-                
-                for (let i = 0; i < numDets; i++) {
-                    const x_center = data[i] * INPUT_SIZE;
-                    const y_center = data[numDets + i] * INPUT_SIZE;
-                    const width = data[2 * numDets + i] * INPUT_SIZE;
-                    const height = data[3 * numDets + i] * INPUT_SIZE;
-                    
-                    let maxConf = 0;
-                    let maxClass = 0;
-                    for (let j = 0; j < numFeats - 4; j++) {
-                        const conf = data[(4 + j) * numDets + i];
-                        if (conf > maxConf) {
-                            maxConf = conf;
-                            maxClass = j;
-                        }
-                    }
-                    
-                    if (maxConf > CONF_THRESHOLD) {
-                        const boxX = (x_center - width / 2 - x) / scale;
-                        const boxY = (y_center - height / 2 - y) / scale;
-                        detections.push({
-                            x: Math.max(0, boxX),
-                            y: Math.max(0, boxY),
-                            w: width / scale,
-                            h: height / scale,
-                            conf: maxConf,
-                            cls: maxClass,
-                            className: CLASS_NAMES[maxClass]
-                        });
-                    }
-                }
-            } else if (dims[2] === 6) {
-                const numDets = dims[1];
-                for (let i = 0; i < numDets; i++) {
-                    const idx = i * 6;
-                    const conf = data[idx + 4];
-                    if (conf > CONF_THRESHOLD) {
-                        const x_center = data[idx] * INPUT_SIZE;
-                        const y_center = data[idx + 1] * INPUT_SIZE;
-                        const width = data[idx + 2] * INPUT_SIZE;
-                        const height = data[idx + 3] * INPUT_SIZE;
-                        const cls = Math.round(data[idx + 5]);
-                        
-                        detections.push({
-                            x: Math.max(0, (x_center - width / 2 - x) / scale),
-                            y: Math.max(0, (y_center - height / 2 - y) / scale),
-                            w: width / scale,
-                            h: height / scale,
-                            conf: conf,
-                            cls: cls,
-                            className: CLASS_NAMES[cls]
-                        });
-                    }
-                }
-            }
-        }
-        
-        // NMS (Non-Maximum Suppression)
-        detections.sort((a, b) => b.conf - a.conf);
-        const filtered = [];
-        for (const det of detections) {
-            let overlap = false;
-            for (const existing of filtered) {
-                const iou = getIOU(det, existing);
-                if (iou > 0.5) {
-                    overlap = true;
-                    break;
-                }
-            }
-            if (!overlap) filtered.push(det);
-        }
-        
-        // Filter out "Not_Mango" - selalu hapus Not_Mango dari hasil deteksi
-        // cls === 1 adalah index untuk 'Not_Mango' dalam CLASS_NAMES array
-        return filtered.filter(det => det.cls !== 1);
+        return { 
+            tensor, 
+            scale, 
+            offsetX, 
+            offsetY, 
+            origW: img.width, 
+            origH: img.height 
+        };
     }, []);
 
     // Calculate IoU
@@ -193,6 +119,236 @@ export function useMangoDetection() {
         const area2 = box2.w * box2.h;
         return inter / (area1 + area2 - inter);
     };
+
+    // Postprocess output - mendukung berbagai format output YOLO
+    const postprocess = useCallback((output, imageInfo, confThreshold, iouThres) => {
+        const { scale, offsetX, offsetY, origW, origH } = imageInfo;
+        const confT = confThreshold ?? confidenceThreshold; // Global threshold (fallback)
+        const iouT = iouThres ?? iouThreshold;
+        
+        // Helper function untuk mendapatkan threshold berdasarkan kelas
+        const getClassThreshold = (className) => {
+            return classThresholds[className] ?? confT;
+        };
+        
+        const detections = [];
+        const data = output.data;
+        const dims = output.dims;
+        
+        console.log('📊 Postprocess - Output dims:', dims);
+        console.log('📊 Postprocess - Image info:', { scale, offsetX, offsetY, origW, origH });
+        console.log('📊 Postprocess - Thresholds:', { confThreshold: confT, iouThreshold: iouT });
+        
+        const numClasses = CLASS_NAMES.length;
+        
+        // Deteksi format output otomatis
+        if (dims.length === 3) {
+            const [batch, dim1, dim2] = dims;
+            
+            // Format [1, N, C] atau [1, C, N] dimana C = 4 + numClasses
+            let numDets, numFeats;
+            let isTransposed = false;
+            
+            if (dim1 === 4 + numClasses || dim1 === 84) {
+                // Format [1, C, N] - features di dim1
+                numFeats = dim1;
+                numDets = dim2;
+            } else if (dim2 === 4 + numClasses || dim2 === 84) {
+                // Format [1, N, C] - features di dim2
+                numFeats = dim2;
+                numDets = dim1;
+                isTransposed = true;
+            } else if (dim2 === 6) {
+                // Format [1, numDets, 6] - [x, y, w, h, conf, cls]
+                numDets = dim1;
+                for (let i = 0; i < numDets; i++) {
+                    const idx = i * 6;
+                    const x_center_raw = data[idx];
+                    const y_center_raw = data[idx + 1];
+                    const width_raw = data[idx + 2];
+                    const height_raw = data[idx + 3];
+                    const conf = data[idx + 4];
+                    const cls = Math.round(data[idx + 5]);
+                    const className = CLASS_NAMES[cls] || CLASS_NAMES[0];
+                    
+                    // Gunakan threshold khusus untuk kelas ini
+                    const classThreshold = getClassThreshold(className);
+                    
+                    if (conf > classThreshold) {
+                        // Normalize jika perlu (jika <= 1 berarti normalized, > 1 berarti pixel space)
+                        const x_center = x_center_raw <= 1 ? x_center_raw * INPUT_SIZE : x_center_raw;
+                        const y_center = y_center_raw <= 1 ? y_center_raw * INPUT_SIZE : y_center_raw;
+                        const width = width_raw <= 1 ? width_raw * INPUT_SIZE : width_raw;
+                        const height = height_raw <= 1 ? height_raw * INPUT_SIZE : height_raw;
+                        
+                        // Convert center to corner (dalam 640x640 space)
+                        const x0_640 = x_center - width / 2;
+                        const y0_640 = y_center - height / 2;
+                        
+                        // Remove letterbox offset
+                        const x0_noPad = x0_640 - offsetX;
+                        const y0_noPad = y0_640 - offsetY;
+                        
+                        // Scale back to original image size
+                        const boxX = x0_noPad / scale;
+                        const boxY = y0_noPad / scale;
+                        const boxW = width / scale;
+                        const boxH = height / scale;
+                        
+                        // Clamp to image bounds
+                        const clampedX = Math.max(0, Math.min(boxX, origW));
+                        const clampedY = Math.max(0, Math.min(boxY, origH));
+                        const clampedW = Math.min(boxW, origW - clampedX);
+                        const clampedH = Math.min(boxH, origH - clampedY);
+                        
+                        detections.push({
+                            x: clampedX,
+                            y: clampedY,
+                            w: clampedW,
+                            h: clampedH,
+                            conf: conf,
+                            cls: cls,
+                            className: CLASS_NAMES[cls] || CLASS_NAMES[0]
+                        });
+                    }
+                }
+            } else {
+                console.warn('⚠️ Unknown output format:', dims);
+                return [];
+            }
+            
+            // Parse format [1, C, N] atau [1, N, C]
+            if (numFeats && numDets) {
+                for (let i = 0; i < numDets; i++) {
+                    let x_center_raw, y_center_raw, width_raw, height_raw;
+                    const classScores = [];
+                    
+                    if (isTransposed) {
+                        // Format [1, N, C]
+                        const idx = i * numFeats;
+                        x_center_raw = data[idx];
+                        y_center_raw = data[idx + 1];
+                        width_raw = data[idx + 2];
+                        height_raw = data[idx + 3];
+                        
+                        for (let j = 0; j < numClasses; j++) {
+                            classScores.push(data[idx + 4 + j]);
+                        }
+                    } else {
+                        // Format [1, C, N]
+                        x_center_raw = data[i];
+                        y_center_raw = data[numDets + i];
+                        width_raw = data[2 * numDets + i];
+                        height_raw = data[3 * numDets + i];
+                        
+                        for (let j = 0; j < numClasses; j++) {
+                            classScores.push(data[(4 + j) * numDets + i]);
+                        }
+                    }
+                    
+                    // Find max class
+                    let maxClassIndex = 0;
+                    let maxClassScore = classScores[0];
+                    for (let j = 1; j < classScores.length; j++) {
+                        if (classScores[j] > maxClassScore) {
+                            maxClassScore = classScores[j];
+                            maxClassIndex = j;
+                        }
+                    }
+                    
+                    // Use maxClassScore as confidence
+                    const conf = maxClassScore;
+                    const className = CLASS_NAMES[maxClassIndex] || CLASS_NAMES[0];
+                    
+                    // Gunakan threshold khusus untuk kelas ini
+                    const classThreshold = getClassThreshold(className);
+                    
+                    if (conf > classThreshold) {
+                        // Normalize jika perlu
+                        const x_center = x_center_raw <= 1 ? x_center_raw * INPUT_SIZE : x_center_raw;
+                        const y_center = y_center_raw <= 1 ? y_center_raw * INPUT_SIZE : y_center_raw;
+                        const width = width_raw <= 1 ? width_raw * INPUT_SIZE : width_raw;
+                        const height = height_raw <= 1 ? height_raw * INPUT_SIZE : height_raw;
+                        
+                        // Convert center to corner (dalam 640x640 space)
+                        const x0_640 = x_center - width / 2;
+                        const y0_640 = y_center - height / 2;
+                        
+                        // Remove letterbox offset
+                        const x0_noPad = x0_640 - offsetX;
+                        const y0_noPad = y0_640 - offsetY;
+                        
+                        // Scale back to original image size
+                        const boxX = x0_noPad / scale;
+                        const boxY = y0_noPad / scale;
+                        const boxW = width / scale;
+                        const boxH = height / scale;
+                        
+                        // Clamp to image bounds
+                        const clampedX = Math.max(0, Math.min(boxX, origW));
+                        const clampedY = Math.max(0, Math.min(boxY, origH));
+                        const clampedW = Math.min(boxW, origW - clampedX);
+                        const clampedH = Math.min(boxH, origH - clampedY);
+                        
+                        detections.push({
+                            x: clampedX,
+                            y: clampedY,
+                            w: clampedW,
+                            h: clampedH,
+                            conf: conf,
+                            cls: maxClassIndex,
+                            className: CLASS_NAMES[maxClassIndex] || CLASS_NAMES[0]
+                        });
+                    }
+                }
+            }
+        } else {
+            console.warn('⚠️ Unexpected output dimensions:', dims);
+            return [];
+        }
+        
+        // NMS (Non-Maximum Suppression)
+        detections.sort((a, b) => b.conf - a.conf);
+        const filtered = [];
+        for (const det of detections) {
+            let overlap = false;
+            for (const existing of filtered) {
+                const iou = getIOU(det, existing);
+                if (iou > iouT) {
+                    overlap = true;
+                    break;
+                }
+            }
+            if (!overlap) filtered.push(det);
+        }
+        
+        // JANGAN filter Not_Mango untuk sementara (sesuai requirement)
+        const finalDetections = filtered;
+        
+        console.log(`📊 Postprocess result: ${detections.length} raw -> ${filtered.length} after NMS`);
+        if (finalDetections.length > 0) {
+            const firstDet = finalDetections[0];
+            console.log('📊 First final detection:', {
+                '640x640 coords': {
+                    x_center: (firstDet.x * scale + offsetX) * (INPUT_SIZE / origW),
+                    y_center: (firstDet.y * scale + offsetY) * (INPUT_SIZE / origH),
+                    width: firstDet.w * scale * (INPUT_SIZE / origW),
+                    height: firstDet.h * scale * (INPUT_SIZE / origH)
+                },
+                'final coords': {
+                    x: firstDet.x,
+                    y: firstDet.y,
+                    w: firstDet.w,
+                    h: firstDet.h
+                },
+                className: firstDet.className,
+                conf: firstDet.conf,
+                cls: firstDet.cls
+            });
+        }
+        
+        return finalDetections;
+    }, [confidenceThreshold, classThresholds, iouThreshold]);
 
     // Detect from image file
     const detectFromFile = useCallback(async (file) => {
@@ -211,29 +367,31 @@ export function useMangoDetection() {
                 image.src = URL.createObjectURL(file);
             });
 
-            const { tensor, scale, x, y, origW, origH } = preprocess(img);
-            const inputTensor = new window.ort.Tensor('float32', tensor, [1, 3, INPUT_SIZE, INPUT_SIZE]);
+            const imageInfo = preprocess(img);
+            const inputTensor = new ort.Tensor('float32', imageInfo.tensor, [1, 3, INPUT_SIZE, INPUT_SIZE]);
             const results = await modelRef.current.run({ [modelRef.current.inputNames[0]]: inputTensor });
             const output = results[modelRef.current.outputNames[0]];
-            const detections = postprocess(output, scale, x, y, origW, origH);
+            const detections = postprocess(output, imageInfo);
 
             // Process detections to get maturity info
-            const processedDetections = detections.map(det => {
+            const processedDetections = detections.map((det) => {
                 const maturityInfo = getMaturityStatus(det.className, det.conf);
                 return {
                     ...det,
                     ...maturityInfo,
-                    confidence: det.conf,
+                    confidence: det.conf, // Alias untuk compatibility
                     imageUrl: img.src
                 };
             });
 
+            console.log(`✅ Processed ${processedDetections.length} detections from file`);
+            
             setIsLoading(false);
             return {
                 detections: processedDetections,
                 imageUrl: img.src,
-                imageWidth: origW,
-                imageHeight: origH
+                imageWidth: imageInfo.origW,
+                imageHeight: imageInfo.origH
             };
         } catch (err) {
             console.error('Detection error:', err);
@@ -261,28 +419,31 @@ export function useMangoDetection() {
                 image.src = imageSrc;
             });
 
-            const { tensor, scale, x, y, origW, origH } = preprocess(img);
-            const inputTensor = new window.ort.Tensor('float32', tensor, [1, 3, INPUT_SIZE, INPUT_SIZE]);
+            const imageInfo = preprocess(img);
+            const inputTensor = new ort.Tensor('float32', imageInfo.tensor, [1, 3, INPUT_SIZE, INPUT_SIZE]);
             const results = await modelRef.current.run({ [modelRef.current.inputNames[0]]: inputTensor });
             const output = results[modelRef.current.outputNames[0]];
-            const detections = postprocess(output, scale, x, y, origW, origH);
+            const detections = postprocess(output, imageInfo);
 
-            const processedDetections = detections.map(det => {
+            // Process detections to get maturity info
+            const processedDetections = detections.map((det) => {
                 const maturityInfo = getMaturityStatus(det.className, det.conf);
                 return {
                     ...det,
                     ...maturityInfo,
-                    confidence: det.conf,
+                    confidence: det.conf, // Alias untuk compatibility
                     imageUrl: imageSrc
                 };
             });
 
+            console.log(`✅ Processed ${processedDetections.length} detections from image`);
+            
             setIsLoading(false);
             return {
                 detections: processedDetections,
                 imageUrl: imageSrc,
-                imageWidth: origW,
-                imageHeight: origH
+                imageWidth: imageInfo.origW,
+                imageHeight: imageInfo.origH
             };
         } catch (err) {
             console.error('Detection error:', err);
@@ -292,6 +453,32 @@ export function useMangoDetection() {
         }
     }, [loadModel, preprocess, postprocess]);
 
+    // Setter functions untuk threshold
+    const setConfThreshold = useCallback((value) => {
+        setConfidenceThreshold(value);
+        console.log('[MangoDetection] Confidence threshold updated:', value);
+    }, []);
+
+    const setIouThres = useCallback((value) => {
+        setIouThreshold(value);
+        console.log('[MangoDetection] IoU threshold updated:', value);
+    }, []);
+    
+    // Setter untuk threshold per kelas
+    const setClassThreshold = useCallback((className, value) => {
+        setClassThresholds(prev => {
+            const updated = { ...prev, [className]: value };
+            console.log('[MangoDetection] Class threshold updated:', { className, value, all: updated });
+            return updated;
+        });
+    }, []);
+    
+    // Setter untuk semua class thresholds sekaligus
+    const setAllClassThresholds = useCallback((thresholds) => {
+        setClassThresholds(thresholds);
+        console.log('[MangoDetection] All class thresholds updated:', thresholds);
+    }, []);
+
     return {
         loadModel,
         detectFromFile,
@@ -299,7 +486,13 @@ export function useMangoDetection() {
         isLoading,
         isModelLoaded,
         error,
-        CLASS_NAMES
+        CLASS_NAMES,
+        confidenceThreshold,
+        classThresholds,
+        iouThreshold,
+        setConfidenceThreshold: setConfThreshold,
+        setClassThreshold,
+        setAllClassThresholds,
+        setIouThreshold: setIouThres
     };
 }
-

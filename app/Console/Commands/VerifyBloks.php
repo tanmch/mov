@@ -65,7 +65,8 @@ class VerifyBloks extends Command
         // Get bloks from Firebase
         $this->info("🔥 Blok di Firebase:");
         try {
-            $firebaseBloks = $this->firebase->getDatabaseData("kebuns/kebun_{$kebunId}/bloks");
+            // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+            $firebaseBloks = $this->firebase->getDatabaseData("kebuns/kebun_1/bloks");
             
             if (!$firebaseBloks || empty($firebaseBloks)) {
                 $this->warn("   Tidak ada blok ditemukan di Firebase");
