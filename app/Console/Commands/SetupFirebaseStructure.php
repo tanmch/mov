@@ -73,10 +73,11 @@ class SetupFirebaseStructure extends Command
                     continue;
                 }
 
-                $kebunId = $kebun->id;
+                // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+                $kebunId = 1;
                 $blokCode = $blok->code ?? "blok_{$blok->id}";
 
-                $this->line("Processing: Kebun #{$kebunId} → Blok {$blokCode}");
+                $this->line("Processing: Kebun #1 (Firebase) → Blok {$blokCode}");
 
                 try {
                     // Check if data already exists
@@ -141,6 +142,8 @@ class SetupFirebaseStructure extends Command
      */
     protected function createBlokStructure(int $kebunId, string $blokCode, Blok $blok)
     {
+        // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+        $kebunId = 1;
         $timestamp = now()->timestamp * 1000; // milliseconds
 
         // Create blok info

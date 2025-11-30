@@ -189,7 +189,8 @@ class BlokController extends Controller
             // Just update info in Firebase
             try {
                 $blokCode = $blok->code;
-                $kebunId = $blok->kebun_id;
+                // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+                $kebunId = 1;
                 
                 $this->firebase->setDatabaseData(
                     "kebuns/kebun_{$kebunId}/bloks/{$blokCode}/info",
@@ -232,7 +233,8 @@ class BlokController extends Controller
         }
 
         $blokCode = $blok->code;
-        $kebunId = $blok->kebun_id;
+        // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+        $kebunId = 1;
 
         // Delete from Firebase
         try {

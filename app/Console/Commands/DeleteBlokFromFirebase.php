@@ -37,7 +37,8 @@ class DeleteBlokFromFirebase extends Command
     public function handle()
     {
         $blokCode = $this->argument('blok-code');
-        $kebunId = $this->option('kebun-id');
+        // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+        $kebunId = 1;
 
         $firebasePath = "kebuns/kebun_{$kebunId}/bloks/{$blokCode}";
 

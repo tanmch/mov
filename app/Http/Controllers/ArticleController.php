@@ -679,4 +679,419 @@ class ArticleController extends Controller
         }
         return $host;
     }
+
+    /**
+     * Get preview image from URL (Open Graph image)
+     */
+    public function getPreviewImage(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'url' => 'required|url',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'URL tidak valid',
+                'errors' => $validator->errors(),
+            ], 400);
+        }
+
+        $url = $request->input('url');
+
+        try {
+            // Fetch HTML content
+            $response = Http::timeout(10)
+                ->withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                ])
+                ->get($url);
+
+            if (!$response->successful()) {
+                throw new \Exception('Gagal mengambil konten dari URL: HTTP ' . $response->status());
+            }
+
+            $html = $response->body();
+            
+            if (empty($html)) {
+                throw new \Exception('Konten HTML kosong');
+            }
+
+            // Load HTML into DOMDocument
+            libxml_use_internal_errors(true);
+            $dom = new \DOMDocument('1.0', 'UTF-8');
+            $dom->encoding = 'UTF-8';
+            
+            $encoding = mb_detect_encoding($html, ['UTF-8', 'ISO-8859-1', 'Windows-1252'], true);
+            if ($encoding && $encoding !== 'UTF-8') {
+                $html = mb_convert_encoding($html, 'UTF-8', $encoding);
+            }
+            
+            @$dom->loadHTML('<?xml encoding="UTF-8">' . $html);
+            libxml_clear_errors();
+
+            $xpath = new \DOMXPath($dom);
+
+            // Helper function to make absolute URL
+            $makeAbsoluteUrl = function($imageUrl, $baseUrl) {
+                if (empty($imageUrl)) {
+                    return null;
+                }
+                
+                // Already absolute
+                if (strpos($imageUrl, 'http://') === 0 || strpos($imageUrl, 'https://') === 0) {
+                    return $imageUrl;
+                }
+                
+                // Protocol relative (//example.com/image.jpg)
+                if (strpos($imageUrl, '//') === 0) {
+                    $parsed = parse_url($baseUrl);
+                    return $parsed['scheme'] . ':' . $imageUrl;
+                }
+                
+                // Absolute path (/image.jpg)
+                if (strpos($imageUrl, '/') === 0) {
+                    $parsed = parse_url($baseUrl);
+                    return $parsed['scheme'] . '://' . $parsed['host'] . $imageUrl;
+                }
+                
+                // Relative path (image.jpg or path/image.jpg)
+                $parsed = parse_url($baseUrl);
+                $path = isset($parsed['path']) ? dirname($parsed['path']) : '';
+                if ($path === '/' || $path === '.') {
+                    $path = '';
+                }
+                return $parsed['scheme'] . '://' . $parsed['host'] . $path . '/' . ltrim($imageUrl, '/');
+            };
+
+            $parsedUrl = parse_url($url);
+            $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'] . (isset($parsedUrl['path']) ? dirname($parsedUrl['path']) : '');
+
+            // Try to extract Open Graph image or Twitter Card image (highest priority)
+            // But skip if it looks like a logo/favicon
+            $imageSelectors = [
+                '//meta[@property="og:image"]/@content',
+                '//meta[@property="og:image:secure_url"]/@content',
+                '//meta[@name="twitter:image"]/@content',
+                '//meta[@name="twitter:image:src"]/@content',
+                '//meta[@itemprop="image"]/@content',
+                '//link[@rel="image_src"]/@href',
+            ];
+
+            foreach ($imageSelectors as $selector) {
+                $nodes = $xpath->query($selector);
+                if ($nodes && $nodes->length > 0) {
+                    $imageUrl = trim($nodes->item(0)->nodeValue);
+                    
+                    if (!empty($imageUrl)) {
+                        // Skip if it looks like a logo or favicon
+                        $imageUrlLower = strtolower($imageUrl);
+                        $skipPatterns = ['logo', 'icon', 'favicon', 'avatar', 'brand', 'header'];
+                        $isLogo = false;
+                        foreach ($skipPatterns as $pattern) {
+                            if (stripos($imageUrlLower, $pattern) !== false) {
+                                $isLogo = true;
+                                break;
+                            }
+                        }
+                        
+                        // Also check if image is very small (likely a logo/favicon)
+                        // We'll check this later when we can get dimensions, but for now skip if filename suggests it
+                        if (!$isLogo) {
+                            $absoluteUrl = $makeAbsoluteUrl($imageUrl, $url);
+                            if ($absoluteUrl) {
+                                // Check if URL suggests it's a content image (not logo)
+                                $path = parse_url($absoluteUrl, PHP_URL_PATH);
+                                $filename = basename($path);
+                                $filenameLower = strtolower($filename);
+                                
+                                // Skip if filename suggests logo/icon
+                                if (stripos($filenameLower, 'logo') === false && 
+                                    stripos($filenameLower, 'icon') === false &&
+                                    stripos($filenameLower, 'favicon') === false) {
+                                    return response()->json([
+                                        'success' => true,
+                                        'imageUrl' => $absoluteUrl,
+                                    ]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fallback: Try to find images in article content (prioritize larger, relevant images)
+            // Search in article, main content, and content divs
+            $contentImageSelectors = [
+                '//article//img[@src]',
+                '//main//img[@src]',
+                '//div[contains(@class, "content")]//img[@src]',
+                '//div[contains(@class, "article")]//img[@src]',
+                '//div[contains(@class, "post")]//img[@src]',
+                '//div[contains(@class, "entry")]//img[@src]',
+                '//div[contains(@class, "body")]//img[@src]',
+                '//figure//img[@src]',
+                '//picture//img[@src]',
+            ];
+
+            $foundImages = [];
+            foreach ($contentImageSelectors as $selector) {
+                $imageNodes = $xpath->query($selector);
+                if ($imageNodes && $imageNodes->length > 0) {
+                    foreach ($imageNodes as $imgNode) {
+                        $src = $imgNode->getAttribute('src');
+                        $alt = strtolower($imgNode->getAttribute('alt') ?? '');
+                        $title = strtolower($imgNode->getAttribute('title') ?? '');
+                        $width = $imgNode->getAttribute('width');
+                        $height = $imgNode->getAttribute('height');
+                        $class = strtolower($imgNode->getAttribute('class') ?? '');
+                        $parentClass = strtolower($imgNode->parentNode->getAttribute('class') ?? '');
+                        
+                        if (empty($src)) {
+                            continue;
+                        }
+
+                        // Skip small icons, logos, decorative images, and header/nav images
+                        $skipPatterns = [
+                            'icon', 'logo', 'avatar', 'header', 'nav', 'navbar', 
+                            'menu', 'banner', 'ad', 'advertisement', 'widget',
+                            'sidebar', 'footer', 'social', 'share', 'button',
+                            'badge', 'thumbnail-small', 'thumb-sm', 'favicon',
+                            'brand', 'site-logo', 'site-icon'
+                        ];
+                        
+                        $shouldSkip = false;
+                        foreach ($skipPatterns as $pattern) {
+                            if (stripos($class, $pattern) !== false || 
+                                stripos($parentClass, $pattern) !== false ||
+                                stripos($alt, $pattern) !== false ||
+                                stripos($title, $pattern) !== false) {
+                                $shouldSkip = true;
+                                break;
+                            }
+                        }
+                        
+                        // Also check image filename and URL
+                        $imageFilename = strtolower(basename(parse_url($src, PHP_URL_PATH)));
+                        foreach ($skipPatterns as $pattern) {
+                            if (stripos($imageFilename, $pattern) !== false ||
+                                stripos($src, $pattern) !== false) {
+                                $shouldSkip = true;
+                                break;
+                            }
+                        }
+                        
+                        if ($shouldSkip) {
+                            continue;
+                        }
+                        
+                        // Skip very small images (likely icons or decorative elements)
+                        // Minimum size for content images
+                        if (!empty($width) && (int)$width < 200) {
+                            continue;
+                        }
+                        if (!empty($height) && (int)$height < 200) {
+                            continue;
+                        }
+                        
+                        // Skip square images that are too small (likely icons)
+                        if (!empty($width) && !empty($height) && 
+                            abs((int)$width - (int)$height) < 50 && 
+                            (int)$width < 300) {
+                            continue;
+                        }
+                        
+                        // Skip images in header/navbar areas (check parent hierarchy)
+                        $parent = $imgNode->parentNode;
+                        $depth = 0;
+                        while ($parent && $depth < 5) {
+                            $parentClass = strtolower($parent->getAttribute('class') ?? '');
+                            $parentId = strtolower($parent->getAttribute('id') ?? '');
+                            $parentTag = strtolower($parent->tagName ?? '');
+                            
+                            if (stripos($parentClass, 'header') !== false ||
+                                stripos($parentClass, 'nav') !== false ||
+                                stripos($parentClass, 'menu') !== false ||
+                                stripos($parentClass, 'banner') !== false ||
+                                stripos($parentId, 'header') !== false ||
+                                stripos($parentId, 'nav') !== false ||
+                                $parentTag === 'header' ||
+                                $parentTag === 'nav') {
+                                continue 2; // Skip this image
+                            }
+                            
+                            $parent = $parent->parentNode;
+                            $depth++;
+                        }
+
+                        // Calculate image score based on relevance
+                        $score = 0;
+                        
+                        // Check if image is related to mango (based on alt, title, class, or surrounding text)
+                        $mangoKeywords = ['mangga', 'mango', 'buah', 'fruit', 'pohon', 'tree', 'tanaman', 'plant', 'panen', 'harvest', 'kebun', 'garden', 'indramayu', 'agrimania', 'gedong', 'cengkir', 'irwin', 'bibit', 'seedling', 'budidaya', 'cultivation'];
+                        $textContent = $alt . ' ' . $title . ' ' . $class . ' ' . $parentClass;
+                        
+                        // Also check surrounding text (parent and sibling nodes)
+                        $parentText = '';
+                        if ($imgNode->parentNode) {
+                            $parentText = strtolower($imgNode->parentNode->textContent ?? '');
+                        }
+                        $textContent .= ' ' . $parentText;
+                        
+                        $mangoScore = 0;
+                        foreach ($mangoKeywords as $keyword) {
+                            if (stripos($textContent, $keyword) !== false) {
+                                $mangoScore += 10; // Boost score for mango-related images
+                            }
+                        }
+                        $score += $mangoScore;
+                        
+                        // Also check image filename for mango-related terms
+                        $imageFilename = strtolower(basename(parse_url($src, PHP_URL_PATH)));
+                        foreach ($mangoKeywords as $keyword) {
+                            if (stripos($imageFilename, $keyword) !== false) {
+                                $score += 5; // Additional boost if filename contains mango keyword
+                            }
+                        }
+
+                        // Prefer larger images (content images are usually larger)
+                        if (!empty($width) && (int)$width >= 400) {
+                            $score += 8; // Large images are more likely to be content images
+                        } elseif (!empty($width) && (int)$width >= 300) {
+                            $score += 5;
+                        } elseif (!empty($width) && (int)$width >= 200) {
+                            $score += 2;
+                        }
+                        
+                        if (!empty($height) && (int)$height >= 400) {
+                            $score += 8;
+                        } elseif (!empty($height) && (int)$height >= 300) {
+                            $score += 5;
+                        } elseif (!empty($height) && (int)$height >= 200) {
+                            $score += 2;
+                        }
+                        
+                        // Prefer images with aspect ratio suitable for content (not too wide or too tall)
+                        if (!empty($width) && !empty($height) && (int)$width > 0 && (int)$height > 0) {
+                            $aspectRatio = (int)$width / (int)$height;
+                            if ($aspectRatio >= 0.8 && $aspectRatio <= 2.0) {
+                                $score += 3; // Good aspect ratio for content images
+                            }
+                        }
+                        
+                        // Prefer images with alt text (more likely to be content images)
+                        if (!empty($alt)) {
+                            $score += 3;
+                        }
+
+                        // Prefer images in article/main content (highest priority locations)
+                        if (strpos($selector, 'article') !== false) {
+                            $score += 10; // Article content is most relevant - highest priority
+                        }
+                        if (strpos($selector, 'main') !== false) {
+                            $score += 8; // Main content is also very relevant
+                        }
+                        
+                        // Prefer images in content/body/post/entry divs
+                        if (strpos($selector, 'content') !== false ||
+                            strpos($selector, 'body') !== false ||
+                            strpos($selector, 'post') !== false ||
+                            strpos($selector, 'entry') !== false) {
+                            $score += 6;
+                        }
+                        
+                        // Prefer images in figure/picture tags (semantic HTML for content images)
+                        if (strpos($selector, 'figure') !== false || strpos($selector, 'picture') !== false) {
+                            $score += 8;
+                        }
+                        
+                        // Heavily penalize images that might be logos based on position
+                        // Images near the top of the page are more likely to be logos
+                        // We can't easily check position, but we can check if parent has header-like classes
+                        if (stripos($parentClass, 'site') !== false && 
+                            (stripos($parentClass, 'header') !== false || stripos($parentClass, 'brand') !== false)) {
+                            $score -= 20; // Heavy penalty for site header/brand images
+                        }
+
+                        // Prefer featured/hero images
+                        if (stripos($class, 'featured') !== false || 
+                            stripos($class, 'hero') !== false || 
+                            stripos($class, 'cover') !== false ||
+                            stripos($parentClass, 'featured') !== false) {
+                            $score += 8;
+                        }
+
+                        $absoluteUrl = $makeAbsoluteUrl($src, $url);
+                        if ($absoluteUrl) {
+                            $foundImages[] = [
+                                'url' => $absoluteUrl,
+                                'score' => $score,
+                                'width' => (int)$width,
+                                'height' => (int)$height,
+                            ];
+                        }
+                    }
+                }
+            }
+
+            // Sort by score (highest first) and return the best image
+            if (!empty($foundImages)) {
+                usort($foundImages, function($a, $b) {
+                    if ($a['score'] == $b['score']) {
+                        // If scores are equal, prefer larger images
+                        $aSize = $a['width'] * $a['height'];
+                        $bSize = $b['width'] * $b['height'];
+                        return $bSize - $aSize;
+                    }
+                    return $b['score'] - $a['score'];
+                });
+
+                // Filter out images with negative scores (likely logos)
+                $validImages = array_filter($foundImages, function($img) {
+                    return $img['score'] > 0;
+                });
+
+                if (!empty($validImages)) {
+                    // Re-index array after filtering
+                    $validImages = array_values($validImages);
+                    $bestImage = $validImages[0];
+                    
+                    \Log::info('Using content image', [
+                        'url' => $url, 
+                        'imageUrl' => $bestImage['url'],
+                        'score' => $bestImage['score'],
+                        'totalFound' => count($foundImages),
+                        'validImages' => count($validImages)
+                    ]);
+                    
+                    return response()->json([
+                        'success' => true,
+                        'imageUrl' => $bestImage['url'],
+                    ]);
+                }
+            }
+
+
+            // If no image found at all, return null
+            \Log::info('No preview image found', ['url' => $url]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Tidak ada gambar preview ditemukan',
+                'imageUrl' => null,
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Failed to get preview image', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil gambar preview: ' . $e->getMessage(),
+                'imageUrl' => null,
+            ], 500);
+        }
+    }
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, usePage, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,7 +7,7 @@ import { Button } from '@/Components/ui/button';
 import { Badge } from '@/Components/ui/badge';
 import { useRole } from '@/hooks/useRole';
 import { KPetaniOnly } from '@/Components/RoleGuard';
-import { User, MapPin, Calendar, Settings, Bell, Shield, HelpCircle, LogOut, ChevronRight, Edit, Package, TrendingUp, Users, Plus, UserPlus, Search, Filter, MoreVertical, Trash2, Power, Mail, Phone, X, CheckCircle2, XCircle, Key, Activity, Zap } from 'lucide-react';
+import { User, MapPin, Calendar, Settings, Bell, Shield, HelpCircle, LogOut, ChevronRight, Edit, Package, TrendingUp, Users, Plus, UserPlus, Search, Filter, MoreVertical, Trash2, Power, Mail, Phone, X, CheckCircle2, XCircle, Key, Activity, Zap, Camera, Upload } from 'lucide-react';
 import AnimatedBackground from '@/Components/AnimatedBackground';
 import DeleteUserModal from '@/Components/Users/DeleteUserModal';
 import BackButton from '@/Components/BackButton';
@@ -59,6 +59,54 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
         'notif-prediksi': true,
         'notif-artikel': true,
     });
+    const [profilePhoto, setProfilePhoto] = useState(null);
+    const [profilePhotoPreview, setProfilePhotoPreview] = useState(() => {
+        // Initialize with user photo_url if available
+        const photoUrl = user?.photo_url;
+        if (photoUrl) {
+            // Ensure URL is absolute
+            if (!photoUrl.startsWith('http')) {
+                if (photoUrl.startsWith('/storage/')) {
+                    return window.location.origin + photoUrl;
+                } else if (!photoUrl.startsWith('/')) {
+                    return window.location.origin + '/storage/' + photoUrl;
+                }
+            }
+            return photoUrl;
+        }
+        return null;
+    });
+    const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+    const [imageLoadError, setImageLoadError] = useState(false);
+    
+    // Update preview when user data changes
+    useEffect(() => {
+        if (user?.photo_url) {
+            // Ensure URL is absolute
+            let photoUrl = user.photo_url;
+            if (photoUrl && !photoUrl.startsWith('http')) {
+                // If relative URL, make it absolute
+                if (photoUrl.startsWith('/storage/')) {
+                    photoUrl = window.location.origin + photoUrl;
+                } else if (!photoUrl.startsWith('/')) {
+                    photoUrl = window.location.origin + '/storage/' + photoUrl;
+                }
+            }
+            // Extract base URL without query params for comparison
+            const baseUrl = photoUrl.split('?')[0];
+            const currentBaseUrl = profilePhotoPreview?.split('?')[0];
+            
+            // Only update if URL actually changed
+            if (baseUrl !== currentBaseUrl) {
+                // Add cache busting timestamp
+                photoUrl = photoUrl + (photoUrl.includes('?') ? '&' : '?') + 't=' + Date.now();
+                setProfilePhotoPreview(photoUrl);
+            }
+        } else if (!user?.photo_url && profilePhotoPreview) {
+            // Clear preview if user has no photo
+            setProfilePhotoPreview(null);
+        }
+    }, [user?.photo_url, user?.id]); // Add user.id to ensure update when user changes
 
     const userData = {
         name: user?.name || 'User',
@@ -285,6 +333,65 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
         });
     };
 
+    const handleUploadPhoto = (file) => {
+        setIsUploadingPhoto(true);
+        
+        const formData = new FormData();
+        formData.append('photo', file);
+        
+        router.post('/profile/upload-photo', formData, {
+            preserveScroll: true,
+            forceFormData: true,
+            onSuccess: (page) => {
+                setIsUploadingPhoto(false);
+                setProfilePhoto(null);
+                
+                // Force update preview immediately from page props
+                // The redirect response includes fresh user data via HandleInertiaRequests middleware
+                const updatedUser = page.props?.auth?.user;
+                if (updatedUser?.photo_url) {
+                    let photoUrl = updatedUser.photo_url;
+                    if (photoUrl && !photoUrl.startsWith('http')) {
+                        if (photoUrl.startsWith('/storage/')) {
+                            photoUrl = window.location.origin + photoUrl;
+                        } else if (!photoUrl.startsWith('/')) {
+                            photoUrl = window.location.origin + '/storage/' + photoUrl;
+                        }
+                    }
+                    // Add unique cache busting timestamp to force browser to reload image
+                    const timestamp = Date.now();
+                    const random = Math.random().toString(36).substring(7);
+                    photoUrl = photoUrl + (photoUrl.includes('?') ? '&' : '?') + 't=' + timestamp + '&v=' + random;
+                    
+                    // Reset error state and update preview
+                    setImageLoadError(false);
+                    setProfilePhotoPreview(photoUrl);
+                } else {
+                    // If no photo_url, ensure preview is cleared
+                    setProfilePhotoPreview(null);
+                }
+            },
+            onError: (errors) => {
+                alert(errors.photo || 'Gagal mengupload foto. Silakan coba lagi.');
+                setIsUploadingPhoto(false);
+                // Reset preview to original
+                if (user?.photo_url) {
+                    let photoUrl = user.photo_url;
+                    if (!photoUrl.startsWith('http')) {
+                        if (photoUrl.startsWith('/storage/')) {
+                            photoUrl = window.location.origin + photoUrl;
+                        } else if (!photoUrl.startsWith('/')) {
+                            photoUrl = window.location.origin + '/storage/' + photoUrl;
+                        }
+                    }
+                    setProfilePhotoPreview(photoUrl);
+                } else {
+                    setProfilePhotoPreview(null);
+                }
+            },
+        });
+    };
+
     return (
         <AuthenticatedLayout>
             <Head title="Profil Saya" />
@@ -332,12 +439,73 @@ export default function Profil({ users = [], filters = {}, currentUser = null })
                     >
                         <Card className="p-5 md:p-8 bg-gradient-to-br from-green-50 via-yellow-50 to-orange-50 border-2 border-green-200/50 shadow-xl">
                             <div className="flex items-start gap-4 md:gap-6">
-                                <motion.div
-                                    whileHover={{ scale: 1.05, rotate: 5 }}
-                                    className="w-20 h-20 md:w-24 md:h-24 bg-gradient-to-br from-green-500 to-yellow-500 rounded-full flex items-center justify-center text-3xl md:text-4xl flex-shrink-0 shadow-lg"
-                                >
-                                    👨‍🌾
-                                </motion.div>
+                                <div className="relative group">
+                                    <motion.div
+                                        whileHover={{ scale: 1.05 }}
+                                        className="w-20 h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg overflow-hidden bg-gradient-to-br from-green-500 to-yellow-500"
+                                    >
+                                        {profilePhotoPreview && !imageLoadError ? (
+                                            <img 
+                                                src={profilePhotoPreview + (profilePhotoPreview.includes('?') ? '&' : '?') + 't=' + Date.now()} 
+                                                alt={userData.name}
+                                                className="w-full h-full object-cover"
+                                                onError={() => {
+                                                    // Set error state instead of manipulating DOM
+                                                    setImageLoadError(true);
+                                                }}
+                                                onLoad={() => {
+                                                    // Reset error state if image loads successfully
+                                                    setImageLoadError(false);
+                                                }}
+                                            />
+                                        ) : (
+                                            <span className="text-3xl md:text-4xl">👨‍🌾</span>
+                                        )}
+                                    </motion.div>
+                                    <label className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity">
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) {
+                                                    // Validate file size (max 5MB)
+                                                    if (file.size > 5 * 1024 * 1024) {
+                                                        alert('Ukuran file terlalu besar. Maksimal 5MB.');
+                                                        return;
+                                                    }
+                                                    
+                                                    // Validate file type
+                                                    if (!file.type.startsWith('image/')) {
+                                                        alert('File harus berupa gambar.');
+                                                        return;
+                                                    }
+                                                    
+                                                    setProfilePhoto(file);
+                                                    setImageLoadError(false); // Reset error state when new file is selected
+                                                    
+                                                    // Create temporary preview for immediate feedback
+                                                    const reader = new FileReader();
+                                                    reader.onload = (e) => {
+                                                        // Set temporary preview (will be replaced by server URL after upload)
+                                                        setProfilePhotoPreview(e.target?.result);
+                                                    };
+                                                    reader.readAsDataURL(file);
+                                                    
+                                                    // Upload immediately - server URL will replace preview in onSuccess
+                                                    handleUploadPhoto(file);
+                                                }
+                                            }}
+                                        />
+                                        <Camera className="w-6 h-6 text-white" />
+                                    </label>
+                                    {isUploadingPhoto && (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">
+                                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex-1">
                                     <div className="flex items-start justify-between mb-3">
                                         <div>

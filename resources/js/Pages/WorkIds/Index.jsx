@@ -12,6 +12,7 @@ import StatsCards from '@/Components/WorkIds/StatsCards';
 import FilterSection from '@/Components/WorkIds/FilterSection';
 import NotificationToast from '@/Components/WorkIds/NotificationToast';
 import DeleteConfirmationModal from '@/Components/WorkIds/DeleteConfirmationModal';
+import BackButton from '@/Components/BackButton';
 
 export default function Index({ workIds, filters = {} }) {
     const { flash } = usePage().props;
@@ -129,6 +130,18 @@ export default function Index({ workIds, filters = {} }) {
                             }}
                             onConfirm={handleDeleteConfirm}
                         />
+
+                        {/* Back Button */}
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            <BackButton 
+                                href={route('profile')}
+                                label="Kembali"
+                            />
+                        </motion.div>
 
                         <motion.div
                             initial={{ opacity: 0, y: -20 }}

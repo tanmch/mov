@@ -14,7 +14,7 @@ import EmptyState from '@/Components/ui/EmptyState';
 import LoadingOverlay from '@/Components/ui/LoadingOverlay';
 import BackButton from '@/Components/BackButton';
 
-export default function LaporanEkspor({ summary = {}, availableReports = [], blokOptions = [] }) {
+export default function LaporanEkspor({ summary = {}, availableReports = [], blokOptions = [], blokStats = [] }) {
     const { auth } = usePage().props;
     const userRole = auth?.user?.role;
     const [selectedLaporanType, setSelectedLaporanType] = useState('deteksi');
@@ -44,13 +44,41 @@ export default function LaporanEkspor({ summary = {}, availableReports = [], blo
         const startDate = formData.get('startDate');
         const endDate = formData.get('endDate');
         
+        // Validasi tanggal
         if (!startDate || !endDate) {
             setNotification({
                 type: 'error',
                 message: 'Silakan pilih tanggal mulai dan tanggal akhir',
             });
             setIsGenerating(false);
-            setTimeout(() => setNotification(null), 3000);
+            setTimeout(() => setNotification(null), 5000);
+            return;
+        }
+        
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999); // End of today
+        
+        // Validasi: end date harus >= start date
+        if (end < start) {
+            setNotification({
+                type: 'error',
+                message: 'Tanggal akhir harus lebih besar atau sama dengan tanggal mulai',
+            });
+            setIsGenerating(false);
+            setTimeout(() => setNotification(null), 5000);
+            return;
+        }
+        
+        // Validasi: tanggal tidak boleh di masa depan
+        if (start > today || end > today) {
+            setNotification({
+                type: 'error',
+                message: 'Tanggal tidak boleh di masa depan',
+            });
+            setIsGenerating(false);
+            setTimeout(() => setNotification(null), 5000);
             return;
         }
         
@@ -132,6 +160,126 @@ export default function LaporanEkspor({ summary = {}, availableReports = [], blo
                     errorMessage = error.response.data.message || errorMessage;
                 } else if (typeof error.response.data === 'string') {
                     errorMessage = error.response.data;
+                }
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+            
+            setNotification({
+                type: 'error',
+                message: errorMessage,
+            });
+            setTimeout(() => setNotification(null), 5000);
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    const handleGenerateLatestData = async () => {
+        setIsGenerating(true);
+        
+        try {
+            const response = await window.axios.get('/laporan/generate-latest', {
+                params: {
+                    format: selectedFormat,
+                },
+                responseType: 'blob',
+            });
+            
+            // Check if response is an error (JSON error message)
+            if (response.headers['content-type'] && response.headers['content-type'].includes('application/json')) {
+                // Response is JSON error, not a file
+                const reader = new FileReader();
+                reader.onload = () => {
+                    try {
+                        const errorData = JSON.parse(reader.result);
+                        setNotification({
+                            type: 'error',
+                            message: errorData.message || 'Gagal membuat laporan data terbaru',
+                        });
+                        setTimeout(() => setNotification(null), 5000);
+                    } catch (e) {
+                        setNotification({
+                            type: 'error',
+                            message: 'Gagal membuat laporan data terbaru',
+                        });
+                        setTimeout(() => setNotification(null), 5000);
+                    }
+                };
+                reader.readAsText(response.data);
+                setIsGenerating(false);
+                return;
+            }
+            
+            // Create blob and download
+            const blob = new Blob([response.data], {
+                type: response.headers['content-type'] || 'application/octet-stream'
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            
+            // Get filename from Content-Disposition header or use default
+            const contentDisposition = response.headers['content-disposition'];
+            let filename = 'laporan_data_terbaru_' + new Date().toISOString().split('T')[0];
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (filenameMatch && filenameMatch[1]) {
+                    filename = filenameMatch[1].replace(/['"]/g, '');
+                }
+            }
+            
+            const extension = selectedFormat === 'pdf' ? '.pdf' : selectedFormat === 'csv' ? '.csv' : '.xlsx';
+            link.setAttribute('download', filename + extension);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            
+            setNotification({
+                type: 'success',
+                message: 'Laporan data terbaru berhasil dibuat dan diunduh!',
+            });
+            setTimeout(() => setNotification(null), 3000);
+        } catch (error) {
+            console.error('Error generating latest data report:', error);
+            let errorMessage = 'Gagal membuat laporan data terbaru';
+            
+            if (error.response) {
+                if (error.response.status === 404) {
+                    // Handle 404 specifically
+                    if (error.response.data) {
+                        if (error.response.data instanceof Blob) {
+                            const text = await error.response.data.text();
+                            try {
+                                const json = JSON.parse(text);
+                                errorMessage = json.message || 'Tidak ada data terbaru yang tersedia';
+                            } catch {
+                                errorMessage = 'Tidak ada data terbaru yang tersedia. Pastikan ada data sensor atau kontrol robot yang sudah disinkronkan dari Firebase ke MySQL.';
+                            }
+                        } else if (typeof error.response.data === 'object') {
+                            errorMessage = error.response.data.message || errorMessage;
+                        } else if (typeof error.response.data === 'string') {
+                            errorMessage = error.response.data;
+                        }
+                    } else {
+                        errorMessage = 'Tidak ada data terbaru yang tersedia. Pastikan ada data sensor atau kontrol robot yang sudah disinkronkan dari Firebase ke MySQL.';
+                    }
+                } else if (error.response.data) {
+                    // Try to parse JSON error response
+                    if (error.response.data instanceof Blob) {
+                        const text = await error.response.data.text();
+                        try {
+                            const json = JSON.parse(text);
+                            errorMessage = json.message || errorMessage;
+                        } catch {
+                            errorMessage = text || errorMessage;
+                        }
+                    } else if (typeof error.response.data === 'object') {
+                        errorMessage = error.response.data.message || errorMessage;
+                    } else if (typeof error.response.data === 'string') {
+                        errorMessage = error.response.data;
+                    }
                 }
             } else if (error.message) {
                 errorMessage = error.message;
@@ -291,7 +439,7 @@ export default function LaporanEkspor({ summary = {}, availableReports = [], blo
                                             >
                                                 {type === 'deteksi' && '🔍 Deteksi'}
                                                 {type === 'sensor' && '📊 Sensor'}
-                                                {type === 'penyiraman' && '💧 Penyiraman'}
+                                                {type === 'penyiraman' && '💧 Penyiraman & Pemupukan'}
                                                 {type === 'panen' && '🌾 Prediksi Panen'}
                                             </button>
                                         ))}
@@ -317,7 +465,7 @@ export default function LaporanEkspor({ summary = {}, availableReports = [], blo
                                                 selectedFormat === 'excel' ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 hover:border-gray-300'
                                             }`}
                                         >
-                                            📊 Excel
+                                            📊 CSV/Excel
                                         </button>
                                     </div>
                                 </div>
@@ -342,6 +490,30 @@ export default function LaporanEkspor({ summary = {}, availableReports = [], blo
                                     <Filter className="w-4 h-4 mr-2" />
                                     {showFilter ? 'Sembunyikan' : 'Tampilkan'} Filter Lanjutan
                                 </Button>
+
+                                <div className="border-t border-gray-200 pt-4 mt-4">
+                                    <Button
+                                        type="button"
+                                        onClick={handleGenerateLatestData}
+                                        disabled={isGenerating}
+                                        className="w-full h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold shadow-lg"
+                                    >
+                                        {isGenerating ? (
+                                            <>
+                                                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                                Generating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles className="w-4 h-4 mr-2" />
+                                                Generate Data Terbaru (Hari Ini)
+                                            </>
+                                        )}
+                                    </Button>
+                                    <p className="text-xs text-gray-500 mt-2 text-center">
+                                        Mengambil semua data sensor dan kontrol robot terbaru hari ini
+                                    </p>
+                                </div>
 
                                 <AnimatePresence>
                                     {showFilter && (
@@ -491,45 +663,66 @@ export default function LaporanEkspor({ summary = {}, availableReports = [], blo
                     >
                         <Card className="p-4 md:p-6 bg-white/80 backdrop-blur-sm border-2 border-gray-200/50 shadow-xl">
                             <h3 className="text-lg font-bold text-gray-900 mb-4">📈 Ringkasan Data Per Blok</h3>
-                            <div className="space-y-3">
-                                {['A', 'B', 'C'].map((blok, index) => (
-                                    <motion.div
-                                        key={blok}
-                                        initial={{ opacity: 0, x: -20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: index * 0.1 }}
-                                        whileHover={{ scale: 1.02 }}
-                                        className={`p-4 rounded-xl border-2 shadow-md ${
-                                            blok === 'A' ? 'bg-purple-50 border-purple-200' :
-                                            blok === 'B' ? 'bg-blue-50 border-blue-200' :
-                                            'bg-green-50 border-green-200'
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-between mb-3">
-                                            <span className="text-lg font-bold text-gray-800">Blok {blok}</span>
-                                            <CheckCircle className={`w-5 h-5 ${
-                                                blok === 'A' ? 'text-purple-600' :
-                                                blok === 'B' ? 'text-blue-600' :
-                                                'text-green-600'
-                                            }`} />
-                                        </div>
-                                        <div className="grid grid-cols-3 gap-3 text-sm">
-                                            <div>
-                                                <p className="text-gray-600 mb-1 font-medium">Deteksi</p>
-                                                <p className="text-lg font-bold text-purple-700">{blok === 'A' ? 450 : blok === 'B' ? 380 : 420}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-gray-600 mb-1 font-medium">Matang</p>
-                                                <p className="text-lg font-bold text-green-700">{blok === 'A' ? '65%' : blok === 'B' ? '58%' : '72%'}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-gray-600 mb-1 font-medium">Penyiraman</p>
-                                                <p className="text-lg font-bold text-blue-700">18x</p>
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                ))}
-                            </div>
+                            {blokStats.length === 0 ? (
+                                <EmptyState
+                                    icon={BarChart3}
+                                    title="Tidak Ada Data Blok"
+                                    message="Belum ada data untuk ditampilkan."
+                                />
+                            ) : (
+                                <div className="space-y-3">
+                                    {blokStats
+                                        .filter((blok, index, self) => 
+                                            // Remove duplicates by code (if same code, take first one)
+                                            index === self.findIndex(b => (b.code || b.id) === (blok.code || blok.id))
+                                        )
+                                        .map((blok, index) => {
+                                        const colors = [
+                                            { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-600' },
+                                            { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600' },
+                                            { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600' },
+                                            { bg: 'bg-yellow-50', border: 'border-yellow-200', text: 'text-yellow-600' },
+                                            { bg: 'bg-pink-50', border: 'border-pink-200', text: 'text-pink-600' },
+                                        ];
+                                        const color = colors[index % colors.length];
+                                        
+                                        return (
+                                            <motion.div
+                                                key={blok.id}
+                                                initial={{ opacity: 0, x: -20 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                transition={{ delay: index * 0.1 }}
+                                                whileHover={{ scale: 1.02 }}
+                                                className={`p-4 rounded-xl border-2 shadow-md ${color.bg} ${color.border}`}
+                                            >
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <div className="flex-1">
+                                                        <span className="text-lg font-bold text-gray-800">Blok {blok.code} - {blok.name}</span>
+                                                        {blok.kebun_name && (
+                                                            <p className="text-xs text-gray-500 mt-0.5">Kebun: {blok.kebun_name}</p>
+                                                        )}
+                                                    </div>
+                                                    <CheckCircle className={`w-5 h-5 ${color.text}`} />
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-3 text-sm">
+                                                    <div>
+                                                        <p className="text-gray-600 mb-1 font-medium">Deteksi</p>
+                                                        <p className="text-lg font-bold text-purple-700">{blok.deteksi}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-600 mb-1 font-medium">Matang</p>
+                                                        <p className="text-lg font-bold text-green-700">{blok.matang}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-gray-600 mb-1 font-medium">Penyiraman</p>
+                                                        <p className="text-lg font-bold text-blue-700">{blok.penyiraman}</p>
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </Card>
                     </motion.div>
 
@@ -548,7 +741,7 @@ export default function LaporanEkspor({ summary = {}, availableReports = [], blo
                                 </li>
                                 <li className="flex items-start gap-2">
                                     <span className="text-blue-600">•</span>
-                                    <span>Laporan Excel untuk analisis data lebih lanjut</span>
+                                    <span>Laporan CSV/Excel untuk analisis data lebih lanjut (format CSV yang dapat dibuka di Excel)</span>
                                 </li>
                                 <li className="flex items-start gap-2">
                                     <span className="text-blue-600">•</span>
@@ -565,37 +758,150 @@ export default function LaporanEkspor({ summary = {}, availableReports = [], blo
                     )}
 
                     {/* Notification Toast */}
-                    {notification && (
-                        <motion.div
-                            initial={{ opacity: 0, y: -50, x: '-50%' }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -50 }}
-                            className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100]"
-                        >
-                            <Card className={`p-4 shadow-2xl ${
-                                notification.type === 'success' 
-                                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' 
-                                    : 'bg-gradient-to-r from-red-500 to-red-600 text-white'
-                            }`}>
-                                <div className="flex items-center gap-3">
-                                    {notification.type === 'success' ? (
-                                        <CheckCircle className="w-5 h-5" />
-                                    ) : (
-                                        <AlertCircle className="w-5 h-5" />
-                                    )}
-                                    <p className="font-medium">{notification.message}</p>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setNotification(null)}
-                                        className="ml-2 h-6 w-6 p-0 text-white hover:bg-white/20"
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </Button>
-                                </div>
-                            </Card>
-                        </motion.div>
-                    )}
+                    <AnimatePresence>
+                        {notification && (
+                            <motion.div
+                                key="notification-toast"
+                                initial={{ opacity: 0, x: 400, scale: 0.8, y: -20 }}
+                                animate={{ 
+                                    opacity: 1, 
+                                    x: 0, 
+                                    scale: 1, 
+                                    y: 0,
+                                    transition: { type: "spring", damping: 20, stiffness: 300 }
+                                }}
+                                exit={{ 
+                                    opacity: 0, 
+                                    x: 400, 
+                                    scale: 0.8,
+                                    transition: { duration: 0.2 }
+                                }}
+                                className="fixed top-4 right-4 z-[100] max-w-md"
+                            >
+                                <motion.div
+                                    className={`relative overflow-hidden rounded-2xl shadow-2xl border-2 backdrop-blur-md ${
+                                        notification.type === 'error'
+                                            ? 'bg-gradient-to-br from-red-50/95 to-rose-50/95 border-red-200/50'
+                                            : 'bg-gradient-to-br from-green-50/95 to-emerald-50/95 border-green-200/50'
+                                    }`}
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
+                                >
+                                    {/* Animated Background Glow */}
+                                    <div className={`absolute inset-0 blur-xl ${
+                                        notification.type === 'error'
+                                            ? 'bg-gradient-to-br from-red-400/20 to-rose-400/20'
+                                            : 'bg-gradient-to-br from-green-400/20 to-emerald-400/20'
+                                    }`}></div>
+                                    
+                                    {/* Animated Glow Effect */}
+                                    <motion.div
+                                        className={`absolute -inset-1 rounded-2xl ${
+                                            notification.type === 'error' ? 'bg-red-400' : 'bg-green-400'
+                                        }`}
+                                        animate={{
+                                            opacity: [0.3, 0.6, 0.3],
+                                            scale: [1, 1.05, 1],
+                                        }}
+                                        transition={{
+                                            duration: 2,
+                                            repeat: Infinity,
+                                            ease: "easeInOut"
+                                        }}
+                                        style={{ filter: 'blur(8px)' }}
+                                    />
+                                    
+                                    <div className="relative p-5 flex items-start gap-4">
+                                        {/* Icon */}
+                                        <motion.div
+                                            initial={{ scale: 0, rotate: -180 }}
+                                            animate={{ scale: 1, rotate: 0 }}
+                                            transition={{ 
+                                                delay: 0.2, 
+                                                type: "spring", 
+                                                stiffness: 200, 
+                                                damping: 15 
+                                            }}
+                                            className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center shadow-lg ${
+                                                notification.type === 'error'
+                                                    ? 'bg-gradient-to-br from-red-500 to-rose-600 text-white'
+                                                    : 'bg-gradient-to-br from-green-500 to-emerald-600 text-white'
+                                            }`}
+                                        >
+                                            {notification.type === 'error' ? (
+                                                <AlertCircle className="w-6 h-6" />
+                                            ) : (
+                                                <CheckCircle className="w-6 h-6" />
+                                            )}
+                                        </motion.div>
+
+                                        {/* Content */}
+                                        <div className="flex-1 min-w-0">
+                                            <motion.h3
+                                                initial={{ opacity: 0, x: -10 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                transition={{ delay: 0.3 }}
+                                                className={`text-lg font-bold mb-1 ${
+                                                    notification.type === 'error' ? 'text-red-800' : 'text-green-800'
+                                                }`}
+                                            >
+                                                {notification.type === 'error' 
+                                                    ? 'Gagal!' 
+                                                    : 'Berhasil!'
+                                                }
+                                            </motion.h3>
+                                            <motion.p
+                                                initial={{ opacity: 0, x: -10 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                transition={{ delay: 0.4 }}
+                                                className={`text-sm ${
+                                                    notification.type === 'error' ? 'text-red-700' : 'text-green-700'
+                                                }`}
+                                            >
+                                                {notification.message}
+                                            </motion.p>
+                                        </div>
+
+                                        {/* Close Button */}
+                                        <motion.button
+                                            initial={{ opacity: 0, scale: 0 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={{ delay: 0.5 }}
+                                            onClick={() => setNotification(null)}
+                                            className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                                                notification.type === 'error'
+                                                    ? 'hover:bg-red-100 text-red-600'
+                                                    : 'hover:bg-green-100 text-green-600'
+                                            }`}
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </motion.button>
+
+                                        {/* Sparkle Effect */}
+                                        {notification.type !== 'error' && (
+                                            <div className="absolute top-2 right-2 pointer-events-none">
+                                                <motion.div
+                                                    animate={{
+                                                        rotate: [0, 360],
+                                                        scale: [1, 1.2, 1],
+                                                    }}
+                                                    transition={{
+                                                        duration: 3,
+                                                        repeat: Infinity,
+                                                        ease: "linear"
+                                                    }}
+                                                >
+                                                    <Sparkles className={`w-4 h-4 ${
+                                                        notification.type === 'error' ? 'text-red-400' : 'text-green-400'
+                                                    } opacity-50`} />
+                                                </motion.div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
         </AuthenticatedLayout>

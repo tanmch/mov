@@ -131,8 +131,9 @@ class Setup5Bloks extends Command
                     $this->info("   🔥 Syncing Blok {$blokData['code']} ke Firebase...");
                     
                     // Initialize blok info in Firebase
+                    // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
                     $this->firebase->setDatabaseData(
-                        "kebuns/kebun_{$kebun->id}/bloks/{$blokData['code']}/info",
+                        "kebuns/kebun_1/bloks/{$blokData['code']}/info",
                         [
                             'name' => $blok->name,
                             'luas' => (float) $blok->luas,
@@ -165,13 +166,13 @@ class Setup5Bloks extends Command
                     ];
 
                     $this->firebase->setDatabaseData(
-                        "kebuns/kebun_{$kebun->id}/bloks/{$blokData['code']}/sensors",
+                        "kebuns/kebun_1/bloks/{$blokData['code']}/sensors",
                         $sensors
                     );
 
                     // Update blok with Firebase path
                     $blok->update([
-                        'firebase_path' => "kebuns/kebun_{$kebun->id}/bloks/{$blokData['code']}"
+                        'firebase_path' => "kebuns/kebun_1/bloks/{$blokData['code']}"
                     ]);
 
                     $firebaseSynced++;

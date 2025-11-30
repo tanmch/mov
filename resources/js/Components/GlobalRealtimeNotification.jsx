@@ -79,10 +79,11 @@ export default function GlobalRealtimeNotification({ bloks = [] }) {
         if (!bloksToListen || bloksToListen.length === 0) return;
 
         bloksToListen.forEach(blok => {
-            const kebunId = blok.kebun_id || blok.kebun?.id || 1;
+            // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+            const kebunId = 1;
             const blokCode = blok.code;
             
-            if (!kebunId || !blokCode) return;
+            if (!blokCode) return;
 
             const firebasePath = `kebuns/kebun_${kebunId}/bloks/${blokCode}/sensors`;
             const sensorRef = ref(database, firebasePath);
@@ -105,11 +106,14 @@ export default function GlobalRealtimeNotification({ bloks = [] }) {
                         // 1. Status changed (not initial load)
                         // 2. Status is warning or critical
                         // 3. Previous status was not undefined
-                        // 4. Previous status was normal (to avoid duplicate notifications)
+                        // 4. Previous status was normal (to avoid duplicate notifications when status changes from normal to warning/critical)
+                        // 5. Or status is warning/critical and previous status was different (to catch all warning/critical changes)
                         if (previousStatus !== undefined && 
                             previousStatus !== status && 
                             (status === 'warning' || status === 'critical') &&
-                            (previousStatus === 'normal' || (previousStatus === 'warning' && status === 'critical'))) {
+                            (previousStatus === 'normal' || 
+                             (previousStatus === 'warning' && status === 'critical') ||
+                             (status === 'warning' && previousStatus !== 'warning'))) {
                             
                             // Check cooldown to prevent spam (5 seconds cooldown for same sensor+blok)
                             const cooldownKey = sensorKey;

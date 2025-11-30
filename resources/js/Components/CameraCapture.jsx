@@ -72,9 +72,8 @@ export default function CameraCapture({ onCapture, onClose, isOpen, isModelLoade
         // Clear canvas
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
-        // Filter valid detections
+        // Filter valid detections (termasuk Not_Mango untuk ditampilkan)
         const validDetections = currentDetections.filter(det => 
-            det.className !== 'Not_Mango' && det.className !== 'Nota_Mango' &&
             det.x !== undefined && det.y !== undefined && det.w !== undefined && det.h !== undefined
         );
         
@@ -176,11 +175,20 @@ export default function CameraCapture({ onCapture, onClose, isOpen, isModelLoade
                 });
             }
 
+            // Skip Not_Mango - jangan tampilkan bounding box dan label untuk Not_Mango
+            if (det.className === 'Not_Mango' || det.className === 'Nota_Mango') {
+                return; // Skip drawing for Not_Mango
+            }
+
             // Get color based on maturity - gunakan warna yang lebih terang dan kontras
             let color = '#FF6B6B'; // Default: Muda (red)
-            if (det.maturity >= 75) color = '#FF69B4'; // Matang (pink/magenta) - seperti di gambar
-            else if (det.maturity >= 50) color = '#FFA07A'; // Setengah Matang (orange)
-            else if (det.maturity > 0) color = '#FF6B6B'; // Muda (red)
+            if (det.maturity >= 75) {
+                color = '#FF69B4'; // Matang (pink/magenta) - seperti di gambar
+            } else if (det.maturity >= 50) {
+                color = '#FFA07A'; // Setengah Matang (orange)
+            } else if (det.maturity > 0) {
+                color = '#FF6B6B'; // Muda (red)
+            }
 
             // Draw bounding box with thicker line dan stroke untuk kontras
             ctx.save();
@@ -423,14 +431,18 @@ export default function CameraCapture({ onCapture, onClose, isOpen, isModelLoade
                 // Draw original image
                 ctx.drawImage(img, 0, 0);
                 
-                // Filter valid detections
+                // Filter valid detections (termasuk Not_Mango untuk ditampilkan)
                 const validDetections = detections.filter(det => 
-                    det.className !== 'Not_Mango' && det.className !== 'Nota_Mango' &&
                     det.x !== undefined && det.y !== undefined && det.w !== undefined && det.h !== undefined
                 );
                 
                 if (validDetections.length > 0) {
                     validDetections.forEach((det) => {
+                        // Skip Not_Mango - jangan tampilkan bounding box dan label untuk Not_Mango
+                        if (det.className === 'Not_Mango' || det.className === 'Nota_Mango') {
+                            return; // Skip drawing for Not_Mango
+                        }
+
                         const x = det.x;
                         const y = det.y;
                         const w = det.w;
@@ -438,9 +450,13 @@ export default function CameraCapture({ onCapture, onClose, isOpen, isModelLoade
 
                         // Get color based on maturity
                         let color = '#FF6B6B'; // Default: Muda (red)
-                        if (det.maturity >= 75) color = '#4ECDC4'; // Matang (teal)
-                        else if (det.maturity >= 50) color = '#FFA07A'; // Setengah Matang (orange)
-                        else if (det.maturity > 0) color = '#FF6B6B'; // Muda (red)
+                        if (det.maturity >= 75) {
+                            color = '#4ECDC4'; // Matang (teal)
+                        } else if (det.maturity >= 50) {
+                            color = '#FFA07A'; // Setengah Matang (orange)
+                        } else if (det.maturity > 0) {
+                            color = '#FF6B6B'; // Muda (red)
+                        }
 
                         // Draw bounding box with thicker line
                         ctx.strokeStyle = color;
@@ -513,14 +529,19 @@ export default function CameraCapture({ onCapture, onClose, isOpen, isModelLoade
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0);
         
-        // Get valid detections
+        // Get valid detections (termasuk Not_Mango untuk ditampilkan)
         const validDetections = currentDetections.filter(det => 
-            det.className !== 'Not_Mango' && det.className !== 'Nota_Mango'
+            det.x !== undefined && det.y !== undefined && det.w !== undefined && det.h !== undefined
         );
         
         // Draw bounding boxes on captured image
         if (validDetections.length > 0) {
             validDetections.forEach((det) => {
+                // Skip Not_Mango - jangan tampilkan bounding box dan label untuk Not_Mango
+                if (det.className === 'Not_Mango' || det.className === 'Nota_Mango') {
+                    return; // Skip drawing for Not_Mango
+                }
+
                 const x = det.x;
                 const y = det.y;
                 const w = det.w;
@@ -528,9 +549,13 @@ export default function CameraCapture({ onCapture, onClose, isOpen, isModelLoade
 
                 // Get color based on maturity
                 let color = '#FF6B6B'; // Default: Muda (red)
-                if (det.maturity >= 75) color = '#4ECDC4'; // Matang (teal)
-                else if (det.maturity >= 50) color = '#FFA07A'; // Setengah Matang (orange)
-                else if (det.maturity > 0) color = '#FF6B6B'; // Muda (red)
+                if (det.maturity >= 75) {
+                    color = '#4ECDC4'; // Matang (teal)
+                } else if (det.maturity >= 50) {
+                    color = '#FFA07A'; // Setengah Matang (orange)
+                } else if (det.maturity > 0) {
+                    color = '#FF6B6B'; // Muda (red)
+                }
 
                 // Draw bounding box with thicker line
                 ctx.strokeStyle = color;
@@ -582,11 +607,8 @@ export default function CameraCapture({ onCapture, onClose, isOpen, isModelLoade
         canvas.toBlob((blob) => {
             if (blob && onCapture) {
                 const file = new File([blob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' });
-                // Hanya kirim detections yang valid (bukan Not_Mango)
-                const validDetections = currentDetections.filter(det => 
-                    det.className !== 'Not_Mango' && det.className !== 'Nota_Mango'
-                );
-                onCapture(file, validDetections);
+                // Kirim semua detections termasuk Not_Mango
+                onCapture(file, currentDetections);
             }
         }, 'image/jpeg', 0.9);
     };

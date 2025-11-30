@@ -15,16 +15,16 @@ Schedule::command('robot:auto-start-schedules')
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/schedule.log'));
 
-// Schedule: Sync Firebase data to MySQL every 5 minutes
-Schedule::command('firebase:sync-all')
+// Schedule: Sync sensor readings from Firebase to MySQL (every 5 minutes)
+Schedule::command('firebase:sync-sensors')
     ->everyFiveMinutes()
     ->withoutOverlapping()
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/firebase-sync.log'));
 
-// Schedule: Full sync Firebase data to MySQL every hour (more thorough)
-Schedule::command('firebase:sync-all')
-    ->hourly()
+// Schedule: Sync robot schedules status from Firebase to MySQL (every 2 minutes)
+Schedule::command('firebase:sync-robot-schedules')
+    ->everyTwoMinutes()
     ->withoutOverlapping()
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/firebase-sync.log'));

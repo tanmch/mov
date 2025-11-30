@@ -27,7 +27,7 @@ createInertiaApp({
     progress: {
         color: '#4B5563',
     },
-    // Update CSRF token on every page visit
+    // Update CSRF token on every page visit and before requests
     onSuccess: (page) => {
         // Update CSRF token from page props if available
         if (page.props?.csrf) {

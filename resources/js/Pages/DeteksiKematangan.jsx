@@ -89,14 +89,18 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                     // Draw original image
                     ctx.drawImage(img, 0, 0);
                     
-                    // Filter valid detections
+                    // Filter valid detections (termasuk Not_Mango untuk ditampilkan)
                     const validDetections = detections.filter(det => 
-                        det.className !== 'Not_Mango' && det.className !== 'Nota_Mango' &&
                         det.x !== undefined && det.y !== undefined && det.w !== undefined && det.h !== undefined
                     );
                     
                     // Draw bounding boxes and labels
                     validDetections.forEach((det) => {
+                        // Skip Not_Mango - jangan tampilkan bounding box dan label untuk Not_Mango
+                        if (det.className === 'Not_Mango' || det.className === 'Nota_Mango') {
+                            return; // Skip drawing for Not_Mango
+                        }
+
                         const x = det.x;
                         const y = det.y;
                         const w = det.w;
@@ -104,9 +108,13 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                         
                         // Get color based on maturity - sama seperti di CameraCapture
                         let color = '#FF6B6B'; // Default: Muda (red)
-                        if (det.maturity >= 75) color = '#FF69B4'; // Matang (pink/magenta) - seperti di gambar
-                        else if (det.maturity >= 50) color = '#FFA07A'; // Setengah Matang (orange)
-                        else if (det.maturity > 0) color = '#FF6B6B'; // Muda (red)
+                        if (det.maturity >= 75) {
+                            color = '#FF69B4'; // Matang (pink/magenta) - seperti di gambar
+                        } else if (det.maturity >= 50) {
+                            color = '#FFA07A'; // Setengah Matang (orange)
+                        } else if (det.maturity > 0) {
+                            color = '#FF6B6B'; // Muda (red)
+                        }
                         
                         // Draw bounding box
                         ctx.strokeStyle = color;
@@ -241,7 +249,12 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
             const result = await detectFromFile(file);
             
             if (result && result.detections && result.detections.length > 0) {
-                // Draw bounding boxes and labels on image
+                // Filter untuk cek apakah ada mangga yang benar-benar terdeteksi (bukan Not_Mango)
+                const mangoDetections = result.detections.filter(det => 
+                    det.className !== 'Not_Mango' && det.className !== 'Nota_Mango'
+                );
+                
+                // Draw bounding boxes and labels on image (termasuk Not_Mango)
                 const labeledImageBlob = await drawBoundingBoxesOnImage(file, result.detections);
                 const labeledImageUrl = URL.createObjectURL(labeledImageBlob);
                 
@@ -276,7 +289,7 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
                 // Show blok selection modal
                 setShowBlokModal(true);
             } else {
-                alert('Tidak ada mangga yang terdeteksi dalam gambar. Pastikan gambar terdapat buah mangga.');
+                alert('Tidak ada objek yang terdeteksi dalam gambar. Pastikan gambar terdapat objek yang jelas.');
             }
         } catch (error) {
             console.error('Detection error:', error);
@@ -384,7 +397,7 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
 
     const handleCameraCapture = async (file, detections) => {
         if (detections && detections.length > 0) {
-            // Draw bounding boxes and labels on captured image
+            // Draw bounding boxes and labels on captured image (termasuk Not_Mango)
             const labeledImageBlob = await drawBoundingBoxesOnImage(file, detections);
             const labeledImageUrl = URL.createObjectURL(labeledImageBlob);
             
@@ -417,7 +430,7 @@ export default function DeteksiKematangan({ blokOptions = [], detectionHistory: 
             // Show blok selection modal
             setShowBlokModal(true);
         } else {
-            alert('Tidak ada mangga yang terdeteksi. Pastikan kamera mengarah ke buah mangga.');
+            alert('Tidak ada objek yang terdeteksi. Pastikan kamera mengarah ke objek yang jelas.');
         }
     };
 

@@ -100,7 +100,8 @@ class CleanupBloks extends Command
                 // Delete from Firebase
                 try {
                     $blokCode = $blok->code;
-                    $firebasePath = "kebuns/kebun_{$kebunId}/bloks/{$blokCode}";
+                    // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+                    $firebasePath = "kebuns/kebun_1/bloks/{$blokCode}";
                     
                     $this->firebase->setDatabaseData($firebasePath, null);
                     $deletedFromFirebase++;
