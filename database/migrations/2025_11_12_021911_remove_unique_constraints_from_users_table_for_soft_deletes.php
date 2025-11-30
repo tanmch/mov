@@ -19,8 +19,8 @@ return new class extends Migration
             // Drop unique constraints
             // Note: MySQL doesn't support partial unique indexes with WHERE clause
             // So we remove the unique constraints and let Laravel validation handle uniqueness
-            $table->dropUnique(['email']);
-            $table->dropUnique(['firebase_uid']);
+            $table->dropUnique('users_email_unique');
+            $table->dropUnique('users_firebase_uid_unique');
             
             // Check if username and id_kerja unique constraints exist before dropping
             // (They were added in a later migration)
@@ -39,10 +39,21 @@ return new class extends Migration
 
         // Add regular indexes for performance (not unique, since we handle uniqueness in Laravel)
         Schema::table('users', function (Blueprint $table) {
-            $table->index('email');
-            $table->index('firebase_uid');
-            $table->index('username');
-            $table->index('id_kerja');
+            $self = $this;
+            $tableName = 'users';
+
+            $maybeAddIndex = function (string $column) use ($table, $tableName, $self) {
+                $indexName = "{$tableName}_{$column}_index";
+
+                if (! $self->indexExists($tableName, $indexName)) {
+                    $table->index($column, $indexName);
+                }
+            };
+
+            $maybeAddIndex('email');
+            $maybeAddIndex('firebase_uid');
+            $maybeAddIndex('username');
+            $maybeAddIndex('id_kerja');
         });
     }
 
@@ -53,10 +64,10 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             // Drop indexes first
-            $table->dropIndex(['email']);
-            $table->dropIndex(['firebase_uid']);
-            $table->dropIndex(['username']);
-            $table->dropIndex(['id_kerja']);
+            $table->dropIndex('users_email_index');
+            $table->dropIndex('users_firebase_uid_index');
+            $table->dropIndex('users_username_index');
+            $table->dropIndex('users_id_kerja_index');
             
             // Re-add unique constraints
             $table->unique('email');
@@ -64,5 +75,14 @@ return new class extends Migration
             $table->unique('username');
             $table->unique('id_kerja');
         });
+    }
+    private function indexExists(string $table, string $index): bool
+    {
+        $results = DB::select(
+            'SELECT COUNT(1) AS total FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
+            [$table, $index]
+        );
+
+        return ! empty($results) && (int) $results[0]->total > 0;
     }
 };

@@ -3,7 +3,7 @@ import { getDatabase } from 'firebase/database';
 
 // Firebase Configuration
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyCJGG_aAMXiV4qJKt94JaFvBhGqvxDyiYg",
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
     authDomain: "mov-project-6931c.firebaseapp.com",
     databaseURL: "https://mov-project-6931c-default-rtdb.asia-southeast1.firebasedatabase.app",
     projectId: "mov-project-6931c",
