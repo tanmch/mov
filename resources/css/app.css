@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom font classes */
+.font-heading {
+    font-family: 'Archivo Black', sans-serif;
+}
+
+.font-body {
+    font-family: 'Roboto', sans-serif;
+}
+
 /* Custom slider styles */
 input[type="range"].slider {
     -webkit-appearance: none;

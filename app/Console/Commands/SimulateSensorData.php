@@ -91,7 +91,8 @@ class SimulateSensorData extends Command
             
             $blokCode = $randomBlok->code ?? "blok_{$randomBlok->id}";
             $blokName = $randomBlok->name ?? $blokCode;
-            $kebunId = $randomBlok->kebun_id;
+            // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+            $kebunId = 1;
 
             $sensorLabel = [
                 'suhu_udara' => 'Suhu Udara',

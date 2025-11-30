@@ -146,6 +146,8 @@ class AddBloksToKebun extends Command
      */
     protected function createBlokFirebaseStructure(int $kebunId, string $blokCode, Blok $blok)
     {
+        // Always use kebun_id = 1 for Firebase structure (single kebun in Firebase)
+        $kebunId = 1;
         $timestamp = now()->timestamp * 1000; // milliseconds
 
         // Create blok info

@@ -408,7 +408,7 @@ class DashboardController extends Controller
     {
         $notifications = Notification::where('user_id', $user->id)
             ->orderBy('created_at', 'desc')
-            ->limit(5)
+            ->limit(20) // Increased limit to include chat notifications
             ->get()
             ->map(function($notif) {
                 $timeAgo = $notif->created_at->diffForHumans();
@@ -423,6 +423,12 @@ class DashboardController extends Controller
                 } elseif ($notif->type === 'robot') {
                     $icon = '✅';
                     $type = 'success';
+                } elseif ($notif->type === 'chat') {
+                    $icon = '💬';
+                    $type = 'info';
+                } elseif ($notif->related_type === 'Question') {
+                    $icon = '💬';
+                    $type = 'info';
                 }
 
                 return [
@@ -431,6 +437,10 @@ class DashboardController extends Controller
                     'icon' => $icon,
                     'message' => $notif->message,
                     'time' => $timeAgo,
+                    'notification_type' => $notif->type, // Include original type
+                    'data' => $notif->data, // Include notification data
+                    'created_at' => $notif->created_at->toISOString(),
+                    'is_read' => $notif->is_read,
                 ];
             });
 

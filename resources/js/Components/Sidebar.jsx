@@ -1,13 +1,15 @@
 import { Link, usePage } from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { motion, AnimatePresence, useScroll, useMotionValueEvent } from 'framer-motion';
+import { useRole } from '@/hooks/useRole';
 import { 
     BarChart3, Bot, TrendingUp, Activity, Zap, ChevronLeft, ChevronRight,
-    Home, Leaf, Camera, BookOpen, User, X, Menu, Grid3x3, Sparkles
+    Home, Leaf, Camera, BookOpen, User, X, Menu, Grid3x3, Sparkles, MessageCircle, HeadphonesIcon, Users
 } from 'lucide-react';
 
 export default function Sidebar() {
     const { url } = usePage();
+    const { isPetani } = useRole();
     const [isOpen, setIsOpen] = useState(true);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
@@ -141,13 +143,22 @@ export default function Sidebar() {
     }, [url]);
 
     // Navigation items - Memoize to prevent re-creation
+    // For petani, MOV Center redirects to chat. For K-Petani, show both
     const navItems = useMemo(() => [
         { id: 'dashboard', label: 'Dashboard', icon: Home, href: '/dashboard' },
         { id: 'kebun', label: 'Kebun', icon: Leaf, href: '/kebun' },
         { id: 'deteksi', label: 'Deteksi', icon: Camera, href: '/deteksi' },
         { id: 'artikel', label: 'Artikel', icon: BookOpen, href: '/artikel' },
+        ...(isPetani 
+            ? [{ id: 'mov-center', label: 'MOV Center', icon: MessageCircle, href: '/chat' }]
+            : [
+                { id: 'chat', label: 'Chat', icon: MessageCircle, href: '/chat' },
+                { id: 'customer-service', label: 'MOV Center', icon: HeadphonesIcon, href: '/customer-service' },
+                { id: 'about-us', label: 'Tentang Kami', icon: Users, href: '/about-us' }
+            ]
+        ),
         { id: 'profil', label: 'Profil', icon: User, href: '/profile' },
-    ], []);
+    ], [isPetani]);
 
     // Quick Actions - Memoize to prevent re-creation
     const quickActions = useMemo(() => [

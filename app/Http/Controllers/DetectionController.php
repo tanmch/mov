@@ -43,9 +43,21 @@ class DetectionController extends Controller
         });
 
         // Get detection history for this user
+        // Optimize query by selecting only needed columns and using proper indexing
+        // Use latest() instead of orderBy for better performance with index
         $detectionHistory = DetectionResult::where('uploaded_by', $user->id)
-            ->with(['blok.kebun'])
-            ->orderBy('detected_at', 'desc')
+            ->select([
+                'id',
+                'blok_id',
+                'image_url',
+                'maturity_level',
+                'confidence_score',
+                'bounding_boxes',
+                'ai_metadata',
+                'detected_at',
+            ])
+            ->with(['blok:id,code,name,kebun_id', 'blok.kebun:id,name'])
+            ->latest('detected_at')
             ->limit(50)
             ->get()
             ->map(function($detection) {

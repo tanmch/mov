@@ -55,7 +55,39 @@ window.axios.interceptors.response.use(
         if (error.response?.status === 419 && !originalRequest._retry) {
             originalRequest._retry = true;
             
-            // Try to refresh CSRF token
+            console.warn('⚠️ CSRF token mismatch (419). Attempting to refresh token...');
+            
+            // First, try to get a fresh token from the server
+            try {
+                // Make a GET request to get fresh CSRF token (this will regenerate session)
+                const response = await window.axios.get('/');
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(response.data, 'text/html');
+                const newToken = doc.querySelector('meta[name="csrf-token"]')?.content;
+                
+                if (newToken) {
+                    // Update meta tag
+                    const metaTag = document.querySelector('meta[name="csrf-token"]');
+                    if (metaTag) {
+                        metaTag.setAttribute('content', newToken);
+                    }
+                    
+                    // Update axios default header
+                    window.axios.defaults.headers.common['X-CSRF-TOKEN'] = newToken;
+                    
+                    // Update request headers with new token
+                    originalRequest.headers['X-CSRF-TOKEN'] = newToken;
+                    
+                    console.log('✅ CSRF token refreshed. Retrying request...');
+                    
+                    // Retry the original request
+                    return window.axios(originalRequest);
+                }
+            } catch (refreshError) {
+                console.error('Failed to refresh CSRF token:', refreshError);
+            }
+            
+            // Fallback: Try to refresh from meta tag (updated by Inertia)
             const newToken = await refreshCsrfToken();
             
             if (newToken) {

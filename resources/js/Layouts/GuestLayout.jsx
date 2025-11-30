@@ -4,7 +4,7 @@ import AnimatedBackground from '@/Components/AnimatedBackground';
 
 export default function GuestLayout({ children }) {
     return (
-        <div className="flex min-h-screen flex-col items-center relative overflow-hidden pt-6 sm:justify-center sm:pt-0">
+        <div className="flex min-h-screen flex-col items-center relative overflow-hidden pt-6 sm:justify-center sm:pt-0 font-body">
             {/* Animated Background - Same as Dashboard */}
             <AnimatedBackground />
             

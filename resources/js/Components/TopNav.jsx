@@ -1,10 +1,12 @@
 import { Link, usePage } from '@inertiajs/react';
-import { Home, Leaf, Camera, BookOpen, User, HeadphonesIcon } from 'lucide-react';
+import { Home, Leaf, Camera, BookOpen, User, HeadphonesIcon, MessageCircle } from 'lucide-react';
 import { motion, useScroll, useMotionValueEvent } from 'framer-motion';
 import { useState, useEffect } from 'react';
+import { useRole } from '@/hooks/useRole';
 
 export default function TopNav() {
     const { url } = usePage();
+    const { isPetani } = useRole();
     const [isVisible, setIsVisible] = useState(true);
     const [lastScrollY, setLastScrollY] = useState(0);
     const { scrollY } = useScroll();
@@ -22,12 +24,19 @@ export default function TopNav() {
         setLastScrollY(currentScrollY);
     });
     
+    // For petani, MOV Center redirects to chat. For K-Petani, show both
     const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: Home, href: '/dashboard' },
         { id: 'kebun', label: 'Kebun', icon: Leaf, href: '/kebun' },
         { id: 'deteksi', label: 'Deteksi', icon: Camera, href: '/deteksi' },
         { id: 'artikel', label: 'Artikel', icon: BookOpen, href: '/artikel' },
-        { id: 'customer-service', label: 'MOV Center', icon: HeadphonesIcon, href: '/customer-service' },
+        ...(isPetani 
+            ? [{ id: 'mov-center', label: 'MOV Center', icon: MessageCircle, href: '/chat' }]
+            : [
+                { id: 'chat', label: 'Chat', icon: MessageCircle, href: '/chat' },
+                { id: 'customer-service', label: 'MOV Center', icon: HeadphonesIcon, href: '/customer-service' }
+            ]
+        ),
         { id: 'profil', label: 'Profil', icon: User, href: '/profile' },
     ];
 
