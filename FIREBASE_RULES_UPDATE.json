@@ -1,0 +1,55 @@
+{
+  "rules": {
+    ".read": true,
+    ".write": true,
+    "robot": {
+      "status": {
+        ".read": true,
+        ".write": true
+      },
+      "schedules": {
+        ".read": true,
+        ".write": true
+      },
+      "active_mission": {
+        ".read": true,
+        ".write": true
+      },
+      "mission_results": {
+        ".read": true,
+        ".write": true
+      },
+      "commands": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "kebuns": {
+      ".read": true,
+      ".write": true,
+      "$kebun_id": {
+        "bloks": {
+          "$blok_id": {
+            "sensors": {
+              ".read": true,
+              ".write": true
+            },
+            "info": {
+              ".read": true,
+              ".write": true
+            }
+          }
+        }
+      }
+    },
+    "detections": {
+      ".read": true,
+      ".write": true
+    },
+    "notifications": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
+
