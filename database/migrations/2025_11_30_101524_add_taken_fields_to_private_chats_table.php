@@ -11,12 +11,22 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('private_chats', function (Blueprint $table) {
-            $table->foreignId('taken_by_id')->nullable()->after('is_active')->constrained('users')->onDelete('set null');
-            $table->timestamp('taken_at')->nullable()->after('taken_by_id');
-            $table->index('taken_by_id');
-            $table->index('taken_at');
-        });
+        // Only add columns if table exists and columns don't exist yet
+        if (Schema::hasTable('private_chats')) {
+            if (!Schema::hasColumn('private_chats', 'taken_by_id')) {
+                Schema::table('private_chats', function (Blueprint $table) {
+                    $table->foreignId('taken_by_id')->nullable()->after('is_active')->constrained('users')->onDelete('set null');
+                    $table->index('taken_by_id');
+                });
+            }
+            
+            if (!Schema::hasColumn('private_chats', 'taken_at')) {
+                Schema::table('private_chats', function (Blueprint $table) {
+                    $table->timestamp('taken_at')->nullable()->after('taken_by_id');
+                    $table->index('taken_at');
+                });
+            }
+        }
     }
 
     /**

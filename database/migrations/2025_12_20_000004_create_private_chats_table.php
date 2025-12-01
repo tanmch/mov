@@ -23,6 +23,8 @@ return new class extends Migration
             $table->string('user_2_name')->nullable(); // Nama untuk guest user 2
             $table->timestamp('last_message_at')->nullable(); // Waktu pesan terakhir
             $table->boolean('is_active')->default(true); // Status aktif chat
+            $table->foreignId('taken_by_id')->nullable()->after('is_active')->constrained('users')->onDelete('set null'); // K-Petani yang mengambil chat guest
+            $table->timestamp('taken_at')->nullable()->after('taken_by_id'); // Waktu chat diambil
             $table->timestamps();
 
             // Index untuk mencari chat antara 2 user
@@ -30,6 +32,8 @@ return new class extends Migration
             $table->index(['user_1_email', 'user_2_email']);
             $table->index('last_message_at');
             $table->index('is_active');
+            $table->index('taken_by_id');
+            $table->index('taken_at');
         });
         }
     }
