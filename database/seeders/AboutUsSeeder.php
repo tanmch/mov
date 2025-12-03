@@ -44,12 +44,13 @@ class AboutUsSeeder extends Seeder
         ];
 
         foreach ($teamMembers as $member) {
-            AboutUs::updateOrCreate(
+            $teamMember = AboutUs::updateOrCreate(
                 ['name' => $member['name']],
                 $member
             );
+            $this->command->info("  ✅ Created/Updated Team Member: {$teamMember->name} ({$teamMember->jobdesc})");
         }
 
-        $this->command->info('Team members berhasil di-seed!');
+        $this->command->info("✅ AboutUsSeeder completed! Total: " . count($teamMembers) . " team members");
     }
 }
