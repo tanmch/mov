@@ -2,6 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+ * AnimatedBackground keyframes.
+ * Only transform + opacity are animated so the work stays on the compositor
+ * thread (no layout, no paint) and GPU usage stays low.
+ * ------------------------------------------------------------------------- */
+@keyframes bg-leaf-drift {
+    0% {
+        transform: translateX(-10vw) translateY(0) rotate(0deg);
+        opacity: 0;
+    }
+    10% {
+        opacity: 0.6;
+    }
+    90% {
+        opacity: 0.3;
+    }
+    100% {
+        transform: translateX(110vw) translateY(12vh) rotate(360deg);
+        opacity: 0;
+    }
+}
+
+@keyframes bg-particle-float {
+    0%, 100% {
+        transform: translate(0, 0) scale(1);
+        opacity: 0.25;
+    }
+    50% {
+        transform: translate(12px, -18px) scale(1.15);
+        opacity: 0.5;
+    }
+}
+
+@keyframes bg-blob-drift {
+    0%, 100% {
+        transform: translate(0, 0);
+    }
+    50% {
+        transform: translate(80px, 40px);
+    }
+}
+
+.bg-leaf {
+    left: 0;
+    animation-name: bg-leaf-drift;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+}
+
+.bg-particle {
+    box-shadow: 0 0 12px currentColor;
+    animation-name: bg-particle-float;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+}
+
+.bg-blob {
+    animation-name: bg-blob-drift;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .bg-leaf,
+    .bg-particle,
+    .bg-blob {
+        animation: none;
+    }
+}
+
 /* Custom font classes */
 .font-heading {
     font-family: 'Archivo Black', sans-serif;

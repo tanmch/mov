@@ -30,7 +30,9 @@ class HarvestPredictionService
      */
     public function getOverallPrediction(): array
     {
-        $bloks = Blok::with('detectionResults')->get();
+        // predictBlock() only needs the latest detection per blok, so don't
+        // eager-load every detection row here.
+        $bloks = Blok::all();
 
         $blockPredictions = $bloks->map(fn ($blok) => $this->predictBlock($blok))->toArray();
 
@@ -172,20 +174,21 @@ class HarvestPredictionService
      */
     public function getWeeklyTrend(): array
     {
+        // Single grouped query instead of one query per day.
+        $averages = DetectionResult::where('detected_at', '>=', now()->subDays(6)->startOfDay())
+            ->selectRaw("DATE(detected_at) as day, AVG(CASE
+                WHEN maturity_level = 'mentah' THEN 20
+                WHEN maturity_level = 'hampir_matang' THEN 65
+                WHEN maturity_level = 'matang' THEN 90
+                WHEN maturity_level = 'lewat_matang' THEN 95
+                ELSE 50 END) as avg_maturity")
+            ->groupBy('day')
+            ->pluck('avg_maturity', 'day');
+
         $trend = [];
-
         for ($i = 6; $i >= 0; $i--) {
-            $date = now()->subDays($i);
-
-            $avgMaturity = DetectionResult::whereDate('detected_at', $date)
-                ->average(\DB::raw("CASE
-                    WHEN maturity_level = 'mentah' THEN 20
-                    WHEN maturity_level = 'hampir_matang' THEN 65
-                    WHEN maturity_level = 'matang' THEN 90
-                    WHEN maturity_level = 'lewat_matang' THEN 95
-                    ELSE 50 END")) ?? 60;
-
-            $trend[] = (int)$avgMaturity;
+            $day = now()->subDays($i)->toDateString();
+            $trend[] = (int) ($averages[$day] ?? 60);
         }
 
         return $trend;

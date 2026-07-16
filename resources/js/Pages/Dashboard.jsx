@@ -17,6 +17,7 @@ import { LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, Ca
 import { database } from '@/config/firebase';
 import { ref, onValue, off } from 'firebase/database';
 import AnimatedBackground from '@/Components/AnimatedBackground';
+import LiveClock from '@/Components/LiveClock';
 import { useHeaderOffset } from '@/hooks/useHeaderOffset';
 import { setLocalStorageDebounced, getLocalStorage } from '@/utils/localStorage';
 import { useChatNotifications } from '@/hooks/useChatNotifications';
@@ -27,7 +28,6 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
     const { isKPetani, canEdit, userRole } = useRole();
     const topOffset = useHeaderOffset();
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [currentTime, setCurrentTime] = useState(new Date());
     
     // Blok selection and real-time data
     const [selectedBlokId, setSelectedBlokId] = useState(initialBlokId);
@@ -131,12 +131,6 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
         ];
     }, [firebaseBlokOptions, blokOptions]);
 
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setCurrentTime(new Date());
-        }, 1000);
-        return () => clearInterval(timer);
-    }, []);
 
     // Close dropdowns when clicking outside
     useEffect(() => {
@@ -1228,19 +1222,6 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
         }
     };
 
-    const formatTime = (date) => {
-        return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-    };
-
-    const formatDate = (date) => {
-        return date.toLocaleDateString('id-ID', { 
-            weekday: 'short', 
-            day: 'numeric', 
-            month: 'short', 
-            year: 'numeric' 
-        });
-    };
-
     return (
         <AuthenticatedLayout>
             <Head title="Dashboard" />
@@ -1306,39 +1287,7 @@ export default function Dashboard({ robotStatus, maturityData = { average: [], p
                                     <div className="hidden sm:block w-px h-12 bg-gradient-to-b from-transparent via-green-200 to-transparent" />
 
                                     {/* Time & Date */}
-                                    <div className="flex flex-col gap-1">
-                                        {/* Time */}
-                                        <motion.div
-                                            key={formatTime(currentTime)}
-                                            initial={{ scale: 1.1, opacity: 0.5 }}
-                                            animate={{ scale: 1, opacity: 1 }}
-                                            transition={{ duration: 0.3 }}
-                                            className="flex items-center gap-2"
-                                        >
-                                            <motion.div
-                                                animate={{ rotate: [0, 360] }}
-                                                transition={{ duration: 60, repeat: Infinity, ease: "linear" }}
-                                            >
-                                                <Clock className="w-4 h-4 text-green-600" />
-                                            </motion.div>
-                                            <p className="text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent font-mono">
-                                                {formatTime(currentTime)}
-                                            </p>
-                                        </motion.div>
-
-                                        {/* Date */}
-                                        <motion.div
-                                            initial={{ opacity: 0, y: -5 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            transition={{ delay: 0.5 }}
-                                            className="flex items-center gap-1.5"
-                                        >
-                                            <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                                            <p className="text-xs font-medium text-gray-600">
-                                                {formatDate(currentTime)}
-                                            </p>
-                                        </motion.div>
-                                    </div>
+                                    <LiveClock />
                                 </div>
                             </motion.div>
 
