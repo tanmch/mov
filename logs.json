@@ -1,0 +1,938 @@
+{
+  "Records": [
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:17:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "ListBuckets",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "92f1be16-a960-4385-9641-dd94bbe13cca",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "legit-user",
+        "arn": "arn:aws:iam::123456789012:user/legit-user",
+        "accountId": "123456789012",
+        "userName": "legit-user"
+      },
+      "eventTime": "2025-11-10T13:00:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "114.5.112.9",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "Yes"
+      },
+      "eventID": "6b5b8cd7-70a6-458d-a8e5-858a8d590d40",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:32:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "GetUser",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "a9d86374-d0ac-43c7-801b-713d57122f5e",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:38:00Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "ListFunctions",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "cef817b0-dc20-46ef-a748-7b1b5c279cdf",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "legit-user",
+        "arn": "arn:aws:iam::123456789012:user/legit-user",
+        "accountId": "123456789012",
+        "userName": "legit-user"
+      },
+      "eventTime": "2025-11-10T13:56:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "36.89.120.7",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "Yes"
+      },
+      "eventID": "3f327c6f-94e3-497e-9348-d42b1e60b699",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:44:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "ListUsers",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "9bdc0cac-a566-4820-9940-ae30ce8558b9",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:50:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "DescribeVolumes",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "938e023a-22b5-4892-b82a-133c988ea26f",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "legit-user",
+        "arn": "arn:aws:iam::123456789012:user/legit-user",
+        "accountId": "123456789012",
+        "userName": "legit-user"
+      },
+      "eventTime": "2025-11-10T13:21:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "36.89.120.7",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "Yes"
+      },
+      "eventID": "9d1c200f-a901-41bf-9e8b-8eee955ab8a9",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:05:00Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "ListFunctions",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "4e781d88-9a5e-49cb-90b5-38a6a3ebcac7",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:47:00Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "ListFunctions",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "afd509c8-07e3-4ac3-87c3-55a82fd4a77d",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:32:00Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "ListFunctions",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "dbd68ebb-5adc-4d8d-8f36-63d819a8f490",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:59:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "DescribeInstances",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "3b2898b1-42ac-4cae-ac7a-fa3fd37cacec",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "legit-user",
+        "arn": "arn:aws:iam::123456789012:user/legit-user",
+        "accountId": "123456789012",
+        "userName": "legit-user"
+      },
+      "eventTime": "2025-11-10T13:49:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "103.10.12.5",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "Yes"
+      },
+      "eventID": "05fddf82-1d3d-4973-847a-e22c016b5ccc",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:23:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "GetUser",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "66475429-fb7f-465b-929f-f9853091ae6c",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:08:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketLocation",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "3bd00afe-2464-4b17-8f73-f50955b2c3f5",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "cloud-admin",
+        "arn": "arn:aws:iam::123456789012:user/cloud-admin",
+        "accountId": "123456789012",
+        "userName": "cloud-admin"
+      },
+      "eventTime": "2025-11-10T15:05:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "ListBuckets",
+      "awsRegion": "us-east-1",
+      "sourceIPAddress": "185.209.179.55",
+      "userAgent": "aws-cli/2.17.7 exfil=BScvIzYrKXBycHc5AS5yNyYWMCNzLh0JJzsdFionJDY/",
+      "requestParameters": {},
+      "responseElements": {
+        "buckets": [
+          {
+            "name": "daily-backups"
+          },
+          {
+            "name": "logs-archive"
+          },
+          {
+            "name": "super-secret-bucket"
+          }
+        ]
+      },
+      "additionalEventData": {},
+      "eventID": "443943f2-9a26-458b-9333-aba396a36e93",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "legit-user",
+        "arn": "arn:aws:iam::123456789012:user/legit-user",
+        "accountId": "123456789012",
+        "userName": "legit-user"
+      },
+      "eventTime": "2025-11-10T14:03:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "36.89.120.7",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "Yes"
+      },
+      "eventID": "b9daab5a-943c-45ca-9c56-fe6376cd7d13",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:29:00Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "ListFunctions",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "9bcb6b86-dbaa-4b44-9e24-d0812a59f59a",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "legit-user",
+        "arn": "arn:aws:iam::123456789012:user/legit-user",
+        "accountId": "123456789012",
+        "userName": "legit-user"
+      },
+      "eventTime": "2025-11-10T13:35:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "114.5.112.9",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "Yes"
+      },
+      "eventID": "8446219a-2441-45c6-8d98-c51c357d5511",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:20:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "DescribeInstances",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "be03a090-86e8-4562-9eb0-64a64b88cc09",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:11:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "GetUser",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "9e487c3c-83f9-49d8-a78a-b34d59a3e0d7",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:35:00Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "ListFunctions",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "8a8cee7a-977e-46c4-8c50-c61f14e17bea",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "cloud-admin",
+        "arn": "arn:aws:iam::123456789012:user/cloud-admin",
+        "accountId": "123456789012",
+        "userName": "cloud-admin"
+      },
+      "eventTime": "2025-11-10T15:04:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "CreateAccessKey",
+      "awsRegion": "us-east-1",
+      "sourceIPAddress": "185.209.179.55",
+      "userAgent": "aws-cli/2.17.7 exfil=BScvIzYrKXBycHc5AS5yNyYWMCNzLh0JJzsdFionJDY/",
+      "requestParameters": {
+        "userName": "cloud-admin",
+        "tagSet": [
+          {
+            "key": "note",
+            "value": "investigation:xor=0x42"
+          }
+        ]
+      },
+      "responseElements": {
+        "accessKey": {
+          "accessKeyId": "AKIAFAKEKEY999",
+          "status": "Active",
+          "createDate": "2025-11-10T15:04:00Z"
+        }
+      },
+      "additionalEventData": {},
+      "eventID": "f1777beb-b53b-478d-a711-d1467d0f48f4",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "cloud-admin",
+        "arn": "arn:aws:iam::123456789012:user/cloud-admin",
+        "accountId": "123456789012",
+        "userName": "cloud-admin"
+      },
+      "eventTime": "2025-11-10T15:07:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetObject",
+      "awsRegion": "us-east-1",
+      "sourceIPAddress": "185.209.179.55",
+      "userAgent": "aws-cli/2.17.7 exfil=BScvIzYrKXBycHc5AS5yNyYWMCNzLh0JJzsdFionJDY/",
+      "requestParameters": {
+        "bucketName": "super-secret-bucket",
+        "key": "prod/passwords.txt"
+      },
+      "responseElements": {},
+      "additionalEventData": {
+        "bytesTransferredOut": 8192,
+        "AuthenticationMethod": "AccessKey"
+      },
+      "eventID": "7d7927fb-5a16-44cb-836a-debdb3f01858",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:14:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketLocation",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "4a92dd34-8382-45ca-909e-3ecf42bc18d1",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:26:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "ListBuckets",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "dcc73620-f4ad-46be-bd9e-897f84f87d3a",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:56:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketLocation",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "1ed7d138-bd94-4b13-a7e2-2f0df8045127",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "cloud-admin",
+        "arn": "arn:aws:iam::123456789012:user/cloud-admin",
+        "accountId": "123456789012",
+        "userName": "cloud-admin"
+      },
+      "eventTime": "2025-11-10T15:00:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "us-east-1",
+      "sourceIPAddress": "185.209.179.55",
+      "userAgent": "aws-cli/2.17.7 Python/3.11",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "eventID": "e2bdd5f3-6b4f-4a0e-b551-e96db9d94880",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "legit-user",
+        "arn": "arn:aws:iam::123456789012:user/legit-user",
+        "accountId": "123456789012",
+        "userName": "legit-user"
+      },
+      "eventTime": "2025-11-10T13:28:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "114.5.112.9",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "Yes"
+      },
+      "eventID": "4deaf137-610c-4b35-92b6-537afd70566f",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:26:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "DescribeVolumes",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "7b89d778-2508-4cc8-b4ab-09b264e5789c",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:29:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "DescribeVolumes",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "48a62eb1-f9d1-40b6-93d1-a50a4f515d2a",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:02:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "DescribeVolumes",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "dcbed3b3-9de7-4375-b950-cf5ac55425ba",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:23:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "DescribeVolumes",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "80f04fb5-7749-440b-88be-a0fd2d7dca22",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:41:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "ListBuckets",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "b49f4f28-cbfc-4c9c-ae4b-eaaf438ff850",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T13:53:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "GetUser",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "c10a9fde-7941-4474-99f3-7517624c44de",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "monitor-bot",
+        "arn": "arn:aws:iam::123456789012:user/monitor-bot",
+        "accountId": "123456789012",
+        "userName": "monitor-bot"
+      },
+      "eventTime": "2025-11-10T14:20:00Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "ListFunctions",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "127.0.0.1",
+      "userAgent": "aws-monitor/1.0",
+      "requestParameters": {},
+      "responseElements": {},
+      "additionalEventData": {},
+      "eventID": "8e85204e-d154-47c0-aac0-6d3156d417c6",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "legit-user",
+        "arn": "arn:aws:iam::123456789012:user/legit-user",
+        "accountId": "123456789012",
+        "userName": "legit-user"
+      },
+      "eventTime": "2025-11-10T13:14:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "114.5.112.9",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "Yes"
+      },
+      "eventID": "7d63ab39-50ce-48ab-912c-54bdbce12d38",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "legit-user",
+        "arn": "arn:aws:iam::123456789012:user/legit-user",
+        "accountId": "123456789012",
+        "userName": "legit-user"
+      },
+      "eventTime": "2025-11-10T13:42:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "36.89.120.7",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "Yes"
+      },
+      "eventID": "dbbf3d85-ba66-433b-adf7-8f1aff91a821",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    },
+    {
+      "eventVersion": "1.08",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "legit-user",
+        "arn": "arn:aws:iam::123456789012:user/legit-user",
+        "accountId": "123456789012",
+        "userName": "legit-user"
+      },
+      "eventTime": "2025-11-10T13:07:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "awsRegion": "ap-southeast-1",
+      "sourceIPAddress": "36.89.120.7",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "requestParameters": {},
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "MFAUsed": "Yes"
+      },
+      "eventID": "f2764c8a-96fe-44ef-a1f5-9390bcda2256",
+      "eventType": "AwsApiCall",
+      "recipientAccountId": "123456789012"
+    }
+  ]
+}
